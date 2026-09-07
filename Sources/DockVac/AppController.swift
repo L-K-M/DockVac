@@ -26,6 +26,10 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
 
   var isCleaning: Bool { service.isCleaning }
 
+  /// While the confirmation or progress sheet is up, the plan on screen must stay valid, so
+  /// every other action is refused.
+  var isSheetPresented: Bool { confirmationSheet != nil || progressSheet != nil }
+
   override init() {
     super.init()
     service.delegate = self
@@ -74,7 +78,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   // MARK: - Scanning
 
   @objc func rescan(_ sender: Any?) {
-    guard !service.isCleaning else { return }
+    guard !service.isCleaning, !isSheetPresented else { return }
     phase = .connecting
     scanStartedAt = Date()
     startScanTimer()
@@ -164,7 +168,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func focus(on kind: DockerResourceKind?) {
-    guard phase == .report else { return }
+    guard phase == .report, !isSheetPresented else { return }
     focus = kind
     if let kind {
       selectedCategory = kind
@@ -176,6 +180,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func toggleBasket(_ id: DockerResourceID) {
+    guard !isSheetPresented else { return }
     if basket.contains(id) {
       removeFromBasket([id])
     } else {
@@ -184,6 +189,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func addToBasket(_ ids: [DockerResourceID]) {
+    guard !isSheetPresented else { return }
     let additions = report.selectionClosure(ids).filter {
       report.item(for: $0)?.removability.isBlocked == false
     }
@@ -192,6 +198,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func removeFromBasket(_ ids: [DockerResourceID]) {
+    guard !isSheetPresented else { return }
     basket.subtract(ids)
     // Items that needed one of the removed prerequisites cannot stay either.
     for id in basket {
@@ -205,6 +212,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func clearBasket() {
+    guard !isSheetPresented else { return }
     basket.removeAll()
     render()
   }
@@ -215,6 +223,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func setFilter(_ newFilter: ReportFilter) {
+    guard !isSheetPresented else { return }
     filter = newFilter
     if let selectedItem, displayedReport.item(for: selectedItem) == nil {
       self.selectedItem = nil
@@ -225,7 +234,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   // MARK: - Cleanup
 
   func reviewAndRemove() {
-    guard phase == .report, !service.isCleaning, confirmationSheet == nil,
+    guard phase == .report, !service.isCleaning, !isSheetPresented,
       let window = windowController.window
     else { return }
     let plan = self.plan
@@ -319,7 +328,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-    guard let action = menuItem.action else { return false }
+    guard let action = menuItem.action, !isSheetPresented else { return false }
     let inReport = phase == .report && !service.isCleaning
     switch action {
     case #selector(rescan(_:)):

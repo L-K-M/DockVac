@@ -33,6 +33,29 @@ class FixtureHandler(BaseHTTPRequestHandler):
     fixtures = DEFAULT_FIXTURES
     delay = 0.0
     log = False
+    # Test hooks: tag -> image ID overrides for inspect, path substrings that fail with 409,
+    # and a file that records every request line.
+    repointed = {}
+    fail_delete = []
+    request_log = None
+
+    def _record(self):
+        if self.request_log:
+            with open(self.request_log, "a") as handle:
+                handle.write("%s %s\n" % (self.command, self.path))
+
+    def _image_id(self, reference):
+        """Resolve a tag, digest, or ID prefix against the image fixture."""
+        if reference in self.repointed:
+            return self.repointed[reference]
+        images = json.loads(self._fixture("system_df_image.json"))["Images"]
+        for image in images:
+            if reference in (image.get("RepoTags") or []) or reference in (image.get("RepoDigests") or []):
+                return image["Id"]
+            bare = image["Id"].split(":", 1)[1]
+            if reference == image["Id"] or bare.startswith(reference.replace("sha256:", "")):
+                return image["Id"]
+        return None
 
     def log_message(self, format, *args):  # noqa: A002 - matches BaseHTTPRequestHandler
         if self.log:
@@ -58,11 +81,18 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self._headers(status, json.dumps(payload).encode())
 
     def do_GET(self):
+        self._record()
         if self.delay:
             time.sleep(self.delay)
         url = urllib.parse.urlsplit(self.path)
         query = urllib.parse.parse_qs(url.query)
         path = url.path
+        if "/images/" in path and path.endswith("/json"):
+            reference = urllib.parse.unquote(path.split("/images/", 1)[1][: -len("/json")])
+            image_id = self._image_id(reference)
+            if image_id is None:
+                return self._json(404, {"message": "No such image: %s" % reference})
+            return self._json(200, {"Id": image_id, "RepoTags": [reference]})
         if path.endswith("/_ping"):
             return self._headers(200, b"OK", "text/plain; charset=utf-8")
         if path.endswith("/version"):
@@ -88,9 +118,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
         return self._json(404, {"message": "page not found"})
 
     def do_DELETE(self):
+        self._record()
         if self.delay:
             time.sleep(self.delay)
         path = urllib.parse.urlsplit(self.path).path
+        if any(pattern in path for pattern in self.fail_delete):
+            return self._json(409, {"message": "conflict: simulated by fake-docker --fail-delete"})
         if "/containers/" in path or "/volumes/" in path:
             return self._headers(204, b"")
         if "/images/" in path:
@@ -99,6 +132,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
         return self._json(404, {"message": "page not found"})
 
     def do_POST(self):
+        self._record()
         if self.delay:
             time.sleep(self.delay)
         url = urllib.parse.urlsplit(self.path)
@@ -126,6 +160,13 @@ def main():
     parser.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
     parser.add_argument("--delay", type=float, default=0.0, help="seconds to wait before each response")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--repoint", action="append", default=[], metavar="TAG=IMAGE_ID",
+        help="make inspect report a different image for TAG (simulates a tag moved after the scan)")
+    parser.add_argument(
+        "--fail-delete", action="append", default=[], metavar="SUBSTRING",
+        help="answer DELETE requests whose path contains SUBSTRING with 409")
+    parser.add_argument("--request-log", help="append one 'METHOD PATH' line per request to this file")
     arguments = parser.parse_args()
 
     if os.path.exists(arguments.socket):
@@ -133,6 +174,9 @@ def main():
     FixtureHandler.fixtures = arguments.fixtures
     FixtureHandler.delay = arguments.delay
     FixtureHandler.log = arguments.verbose
+    FixtureHandler.repointed = dict(entry.split("=", 1) for entry in arguments.repoint)
+    FixtureHandler.fail_delete = arguments.fail_delete
+    FixtureHandler.request_log = arguments.request_log
 
     server = UnixServer(arguments.socket, FixtureHandler)
     # Test runners may spawn us with SIGTERM ignored; handle it explicitly so `kill` works.

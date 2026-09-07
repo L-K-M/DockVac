@@ -34,6 +34,8 @@ public struct CleanupOperation: Hashable, Sendable, Identifiable {
   /// The docker CLI command that does the same thing, shown so the user knows exactly
   /// what happens.
   public let cliEquivalent: String
+  /// Operations in the same plan that must succeed before this one may run.
+  public let prerequisites: [DockerResourceID]
 
   public init(
     id: DockerResourceID,
@@ -43,7 +45,8 @@ public struct CleanupOperation: Hashable, Sendable, Identifiable {
     detail: String,
     estimatedReclaimableBytes: UInt64,
     warnings: [String],
-    cliEquivalent: String
+    cliEquivalent: String,
+    prerequisites: [DockerResourceID] = []
   ) {
     self.id = id
     self.action = action
@@ -53,6 +56,7 @@ public struct CleanupOperation: Hashable, Sendable, Identifiable {
     self.estimatedReclaimableBytes = estimatedReclaimableBytes
     self.warnings = warnings
     self.cliEquivalent = cliEquivalent
+    self.prerequisites = prerequisites
   }
 }
 
@@ -203,7 +207,8 @@ public struct CleanupPlan: Hashable, Sendable {
         detail: item.subtitle,
         estimatedReclaimableBytes: item.estimatedReclaimableBytes,
         warnings: item.warnings,
-        cliEquivalent: "docker image rm \(cliTargets.map(shellQuote).joined(separator: " "))"
+        cliEquivalent: "docker image rm \(cliTargets.map(shellQuote).joined(separator: " "))",
+        prerequisites: item.removability.prerequisites
       )
     case .containers:
       let container = report.usage.containers.first { $0.id == item.id.rawValue }
@@ -216,7 +221,8 @@ public struct CleanupPlan: Hashable, Sendable {
         detail: item.subtitle,
         estimatedReclaimableBytes: item.estimatedReclaimableBytes,
         warnings: item.warnings,
-        cliEquivalent: "docker container rm \(shellQuote(cliTarget))"
+        cliEquivalent: "docker container rm \(shellQuote(cliTarget))",
+        prerequisites: item.removability.prerequisites
       )
     case .localVolumes:
       return CleanupOperation(
@@ -227,7 +233,8 @@ public struct CleanupPlan: Hashable, Sendable {
         detail: item.subtitle,
         estimatedReclaimableBytes: item.estimatedReclaimableBytes,
         warnings: item.warnings,
-        cliEquivalent: "docker volume rm \(shellQuote(item.id.rawValue))"
+        cliEquivalent: "docker volume rm \(shellQuote(item.id.rawValue))",
+        prerequisites: item.removability.prerequisites
       )
     case .buildCache:
       return CleanupOperation(
@@ -239,7 +246,8 @@ public struct CleanupPlan: Hashable, Sendable {
         estimatedReclaimableBytes: item.estimatedReclaimableBytes,
         warnings: item.warnings,
         cliEquivalent:
-          "docker builder prune --force --filter \(shellQuote("id=\(item.id.rawValue)"))"
+          "docker builder prune --force --filter \(shellQuote("id=\(item.id.rawValue)"))",
+        prerequisites: item.removability.prerequisites
       )
     }
   }
@@ -343,6 +351,22 @@ public struct CleanupRunState: Hashable, Sendable {
   public mutating func markFailed(_ index: Int, message: String) {
     guard statuses.indices.contains(index) else { return }
     statuses[index] = .failed(message: message)
+  }
+
+  public mutating func markSkipped(_ index: Int, reason: String) {
+    guard statuses.indices.contains(index) else { return }
+    statuses[index] = .skipped(reason: reason)
+  }
+
+  /// Prerequisites of `index` that did not succeed, by title.
+  public func unmetPrerequisites(of index: Int) -> [CleanupOperation] {
+    guard plan.operations.indices.contains(index) else { return [] }
+    let wanted = Set(plan.operations[index].prerequisites)
+    return zip(plan.operations, statuses).compactMap { operation, status in
+      guard wanted.contains(operation.id) else { return nil }
+      if case .succeeded = status { return nil }
+      return operation
+    }
   }
 
   /// Marks every unfinished operation as skipped, e.g. after the user stops the cleanup.

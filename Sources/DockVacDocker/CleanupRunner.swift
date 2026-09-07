@@ -6,6 +6,10 @@ import Foundation
 /// Stopping is cooperative: cancelling the surrounding task lets the operation that is
 /// already talking to Docker finish, then marks everything after it as skipped. A removal
 /// is never interrupted half-way, so the UI always knows what really happened.
+///
+/// Two safety rules hold regardless of what the plan says: an operation whose prerequisite
+/// did not succeed is skipped rather than attempted, and an image that must be removed tag
+/// by tag is checked first so a tag that was re-pointed since the scan is never untagged.
 public struct CleanupRunner: Sendable {
   public let client: DockerEngineClient
 
@@ -13,9 +17,9 @@ public struct CleanupRunner: Sendable {
     self.client = client
   }
 
-  public func run(_ plan: CleanupPlan, onProgress: @escaping @Sendable (CleanupRunState) -> Void)
-    async -> CleanupRunState
-  {
+  public func run(
+    _ plan: CleanupPlan, onProgress: @escaping @Sendable (CleanupRunState) -> Void
+  ) async -> CleanupRunState {
     var state = CleanupRunState(plan: plan)
     onProgress(state)
 
@@ -23,6 +27,13 @@ public struct CleanupRunner: Sendable {
       if Task.isCancelled {
         state.skipRemaining(reason: "Stopped by user.")
         break
+      }
+      let unmet = state.unmetPrerequisites(of: index)
+      if !unmet.isEmpty {
+        let names = unmet.map { $0.target }.joined(separator: ", ")
+        state.markSkipped(index, reason: "Not attempted: \(names) could not be removed first.")
+        onProgress(state)
+        continue
       }
       state.markRunning(index)
       onProgress(state)
@@ -88,21 +99,46 @@ public struct CleanupRunner: Sendable {
     id: String, references: [String], using client: DockerEngineClient
   ) async throws -> Outcome {
     if references.isEmpty {
+      // Deleting by ID can never hit a different image than the one that was selected.
       let items = try await client.removeImage(reference: id)
       return .succeeded(detail: describe(items), reclaimedBytes: nil)
     }
 
+    // Docker untags each reference before it checks whether a container still uses the
+    // image, so refuse up front rather than leave the image half-untagged.
+    let users = try await client.listContainers().filter { $0.imageID == id }
+    if !users.isEmpty {
+      let names = users.map { $0.displayName }.joined(separator: ", ")
+      return .failed(
+        message:
+          "Still used by container \(names), which was started or created after the scan. Nothing was removed."
+      )
+    }
+
     var items: [ImageDeleteItem] = []
     for (index, reference) in references.enumerated() {
+      let progress =
+        index == 0
+        ? "Nothing was removed." : "Removed \(index) of \(references.count) references first."
+      let isDigest = reference.contains("@")
+      do {
+        let current = try await client.imageID(forReference: reference)
+        guard current == id else {
+          return .failed(
+            message:
+              "\(reference) now points to a different image (\(dockerShortID(current))), not the one you selected. \(progress)"
+          )
+        }
+      } catch DockerEngineError.api(let status, _) where status == 404 {
+        if isDigest {
+          // Digest references disappear together with the last tag of their repository.
+          continue
+        }
+        return .failed(message: "\(reference) no longer exists. \(progress)")
+      }
       do {
         items += try await client.removeImage(reference: reference)
-      } catch DockerEngineError.api(let status, _) where status == 404 && reference.contains("@") {
-        // Digest references disappear together with the last tag of their repository.
-        continue
       } catch {
-        let progress =
-          index == 0
-          ? "Nothing was removed." : "Removed \(index) of \(references.count) references first."
         return .failed(message: "\(dockerErrorMessage(error)) \(progress)")
       }
     }
@@ -123,7 +159,7 @@ public struct CleanupRunner: Sendable {
     if parts.isEmpty {
       return "Image removed."
     }
-    return parts.joined(separator: ", ").prefix(1).uppercased()
-      + parts.joined(separator: ", ").dropFirst() + "."
+    let sentence = parts.joined(separator: ", ")
+    return sentence.prefix(1).uppercased() + sentence.dropFirst() + "."
   }
 }

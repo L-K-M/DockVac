@@ -114,6 +114,33 @@ final class CleanupPlanTests: XCTestCase {
       plan.cliScript.split(separator: "\n").first?.hasPrefix("docker container rm"), true)
   }
 
+  func testOperationsCarryTheirPrerequisites() throws {
+    let report = try Fixtures.report()
+    let plan = CleanupPlan.make(
+      selecting: [
+        Fixtures.volumeID("dv-stopped-ref"), Fixtures.containerID(Fixtures.exitedContainerID),
+      ], from: report)
+
+    XCTAssertEqual(plan.operations.map { $0.id.kind }, [.containers, .localVolumes])
+    XCTAssertEqual(plan.operations[0].prerequisites, [])
+    XCTAssertEqual(
+      plan.operations[1].prerequisites, [Fixtures.containerID(Fixtures.exitedContainerID)])
+
+    var state = CleanupRunState(plan: plan)
+    XCTAssertEqual(state.unmetPrerequisites(of: 1).map { $0.id }, [plan.operations[0].id])
+    state.markFailed(0, message: "conflict")
+    XCTAssertEqual(state.unmetPrerequisites(of: 1).count, 1)
+    state.markSkipped(1, reason: "Not attempted: dv-exited could not be removed first.")
+    XCTAssertEqual(
+      state.statuses[1], .skipped(reason: "Not attempted: dv-exited could not be removed first."))
+    XCTAssertEqual(state.unmetPrerequisites(of: 0), [])
+    XCTAssertEqual(state.unmetPrerequisites(of: 7), [])
+
+    var succeeded = CleanupRunState(plan: plan)
+    succeeded.markSucceeded(0, detail: "Container removed.")
+    XCTAssertTrue(succeeded.unmetPrerequisites(of: 1).isEmpty)
+  }
+
   func testUnknownSelectionIsExcluded() throws {
     let report = try Fixtures.report()
     let ghost = DockerResourceID(kind: .localVolumes, rawValue: "ghost")

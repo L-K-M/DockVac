@@ -106,6 +106,15 @@ public enum DockerEngineDecoder {
     return message.isEmpty ? nil : message
   }
 
+  /// The `Id` of an image inspect response (`GET /images/{name}/json`).
+  public static func decodeImageID(_ data: Data) throws -> String {
+    let wire = try decode(ImageInspectWire.self, from: data)
+    guard let id = wire.id, !id.isEmpty else {
+      throw DockerDecodingError.invalidResource("image inspect response without Id")
+    }
+    return id
+  }
+
   public static func decodeImageDeleteResponse(_ data: Data) throws -> [ImageDeleteItem] {
     let wire = try decode([ImageDeleteWire].self, from: data)
     return wire.map { ImageDeleteItem(untagged: $0.untagged, deleted: $0.deleted) }
@@ -454,6 +463,14 @@ struct VersionWire: Decodable {
 
 struct ErrorWire: Decodable {
   var message: String?
+}
+
+struct ImageInspectWire: Decodable {
+  var id: String?
+
+  enum CodingKeys: String, CodingKey {
+    case id = "Id"
+  }
 }
 
 struct ImageDeleteWire: Decodable {

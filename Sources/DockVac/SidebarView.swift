@@ -100,9 +100,13 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
       detail.leadingAnchor.constraint(equalTo: leadingAnchor),
       detail.trailingAnchor.constraint(equalTo: trailingAnchor),
       detail.bottomAnchor.constraint(equalTo: bottomAnchor),
-      detail.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.42),
-      scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
+      detail.heightAnchor.constraint(greaterThanOrEqualToConstant: 140),
+      scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 100),
     ])
+    let preferredDetailHeight = detail.heightAnchor.constraint(
+      equalTo: heightAnchor, multiplier: 0.42)
+    preferredDetailHeight.priority = .defaultHigh
+    preferredDetailHeight.isActive = true
   }
 
   required init?(coder: NSCoder) {
@@ -139,6 +143,10 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
       newRows = state.report.categories.map { .category($0) }
     }
 
+    // Reloading can drop the table's selection; that must not read back as a user action.
+    isApplyingSelection = true
+    defer { isApplyingSelection = false }
+
     let basketChanged = basket != state.basket
     basket = state.basket
     if newRows != rows {
@@ -160,8 +168,6 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         return state.selectedItem == nil && category.kind == state.selectedCategory
       }
     }
-    isApplyingSelection = true
-    defer { isApplyingSelection = false }
     if let targetRow {
       if table.selectedRow != targetRow {
         table.selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)

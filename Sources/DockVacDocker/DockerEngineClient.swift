@@ -77,6 +77,13 @@ public struct DockerEngineClient: Sendable {
     return try decode { try DockerEngineDecoder.decodeBuildCache(response.body) }
   }
 
+  /// The image ID a reference (tag, digest, or ID) currently points at.
+  public func imageID(forReference reference: String) async throws -> String {
+    let response = try await perform(
+      HTTPRequest(method: "GET", path: "/images/\(pathSegment(reference))/json"))
+    return try decode { try DockerEngineDecoder.decodeImageID(response.body) }
+  }
+
   /// Everything in one call. Slower than the staged reads but useful for tests.
   public func diskUsage() async throws -> DockerDiskUsage {
     let response = try await perform(HTTPRequest(method: "GET", path: "/system/df"))

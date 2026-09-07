@@ -90,9 +90,14 @@ final class ReportView: NSView, TreemapViewDelegate {
     fatalError("init(coder:) is not supported")
   }
 
-  override func viewDidMoveToWindow() {
-    super.viewDidMoveToWindow()
-    if window != nil, split.arrangedSubviews.count == 2, split.bounds.width > 0 {
+  private var didPositionDivider = false
+
+  override func layout() {
+    super.layout()
+    // Give the sidebar its intended width once real geometry exists; afterwards the user's
+    // divider position is left alone across rescans.
+    if !didPositionDivider, split.bounds.width > 0 {
+      didPositionDivider = true
       split.setPosition(max(400, split.bounds.width - 360), ofDividerAt: 0)
     }
   }

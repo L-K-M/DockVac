@@ -160,6 +160,14 @@ final class EngineAPIDecodingTests: XCTestCase {
     XCTAssertNil(DockerEngineDecoder.decodeErrorMessage(Data("{\"message\":\"  \"}".utf8)))
   }
 
+  func testDecodesImageInspectID() throws {
+    XCTAssertEqual(
+      try DockerEngineDecoder.decodeImageID(Data("{\"Id\":\"sha256:abc\",\"RepoTags\":[]}".utf8)),
+      "sha256:abc")
+    XCTAssertThrowsError(try DockerEngineDecoder.decodeImageID(Data("{\"RepoTags\":[]}".utf8)))
+    XCTAssertThrowsError(try DockerEngineDecoder.decodeImageID(Data("[]".utf8)))
+  }
+
   func testDecodesDeleteAndPruneResponses() throws {
     let deletions = try DockerEngineDecoder.decodeImageDeleteResponse(
       Data("[{\"Untagged\":\"dv-app:1.0\"},{\"Deleted\":\"sha256:abc\"}]".utf8))

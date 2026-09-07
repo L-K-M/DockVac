@@ -351,8 +351,8 @@ public enum UsageAnalyzer {
       details.append(.init("Digests", image.repoDigests.joined(separator: "\n")))
     }
     details.append(.init("Size", ByteFormat.string(image.sizeBytes)))
-    details.append(.init("Shared with other images", ByteFormat.string(image.sharedSizeBytes)))
-    details.append(.init("Unique to this image", ByteFormat.string(image.uniqueSizeBytes)))
+    details.append(.init("Shared", ByteFormat.string(image.sharedSizeBytes)))
+    details.append(.init("Unique", ByteFormat.string(image.uniqueSizeBytes)))
     details.append(.init("Containers", containers.isEmpty ? "none" : containerList(containers)))
     if let created = image.created {
       details.append(.init("Created", DateFormat.absolute(created)))
@@ -486,8 +486,8 @@ public enum UsageAnalyzer {
           : "\(container.imageReference) (\(dockerShortID(container.imageID)))"),
       .init("Command", container.command.isEmpty ? "none" : container.command),
       .init("State", container.status.isEmpty ? container.state.displayName : container.status),
-      .init("Writable layer", ByteFormat.string(container.sizeRwBytes)),
-      .init("Root filesystem", ByteFormat.string(container.sizeRootFsBytes)),
+      .init("Writable", ByteFormat.string(container.sizeRwBytes)),
+      .init("Root FS", ByteFormat.string(container.sizeRootFsBytes)),
     ]
     if !container.mounts.isEmpty {
       details.append(
