@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ui_smoke:
+        description: Also run the app against the fake daemon on macOS and commit screenshots to docs/screenshots
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -36,3 +41,52 @@ jobs:
       - run: scripts/build.sh --clean --install
       - run: test -x /Applications/DockVac.app/Contents/MacOS/DockVac
       - run: codesign --verify --strict /Applications/DockVac.app
+
+  # Manual only: builds the app, runs it against scripts/fake-docker.py, walks through the
+  # screens with DOCKVAC_SMOKE_SCRIPT, and commits screenshots to docs/screenshots.
+  ui-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.ui_smoke }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/build.sh --clean
+      - name: Capture screenshots
+        run: |
+          set -x
+          mkdir -p shots
+          system_profiler SPDisplaysDataType | grep -i resolution || true
+          binary=build/DockVac.app/Contents/MacOS/DockVac
+
+          # No daemon anywhere: the app must explain that Docker is not running.
+          "$binary" & app=$!
+          sleep 8
+          screencapture -x shots/00-no-docker.png
+          kill $app || true
+          sleep 2
+
+          # Fixture-backed daemon; the delay keeps the scanning screen visible for a while.
+          python3 scripts/fake-docker.py --socket /tmp/dockvac-fake.sock --delay 1.5 & fake=$!
+          sleep 1
+          DOCKER_HOST=unix:///tmp/dockvac-fake.sock \
+          DOCKVAC_SMOKE_SCRIPT="focus-images,select-first,add-safe,review" \
+            "$binary" & app=$!
+          sleep 4;  screencapture -x shots/01-scanning.png
+          sleep 4;  screencapture -x shots/02-report.png
+          sleep 2;  screencapture -x shots/03-images-zoomed.png
+          sleep 2;  screencapture -x shots/04-item-selected.png
+          sleep 2;  screencapture -x shots/05-cleanup-list.png
+          sleep 3;  screencapture -x shots/06-review-sheet.png
+          kill $app $fake || true
+          ls -la shots
+      - name: Commit screenshots
+        run: |
+          mkdir -p docs/screenshots
+          cp shots/*.png docs/screenshots/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          git commit -m "Add UI smoke screenshots" || exit 0
+          git push
