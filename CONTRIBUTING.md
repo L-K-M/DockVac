@@ -12,4 +12,6 @@ swift test
 
 On macOS, also run `scripts/build.sh --clean`.
 
-Keep Docker process and socket access behind a driver. Changes that can delete Docker data require tests for confirmation, cancellation, malformed output, and partial failure.
+The integration tests in `Tests/DockVacDockerTests/LiveDockerTests.swift` run against a real daemon when one is reachable and `alpine:3.20` is present locally; otherwise they skip. They create and remove resources prefixed `dockvac-test-`.
+
+Keep Docker socket access behind the `DockVacDocker` driver. Changes that can delete Docker data require tests for confirmation, cancellation, malformed output, and partial failure.

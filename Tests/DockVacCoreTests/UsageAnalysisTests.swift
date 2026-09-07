@@ -230,6 +230,42 @@ final class UsageAnalysisTests: XCTestCase {
     XCTAssertFalse(safe.contains { $0.kind == .localVolumes || $0.kind == .containers })
   }
 
+  func testFilteredReportKeepsCategoriesAndSnapshot() throws {
+    let report = try Fixtures.report()
+    let reclaimable = report.filtered { $0.removability.isRemovableNow }
+
+    XCTAssertEqual(reclaimable.categories.map { $0.kind }, DockerResourceKind.displayOrder)
+    XCTAssertEqual(reclaimable.usage, report.usage)
+    XCTAssertEqual(reclaimable.capturedAt, report.capturedAt)
+    XCTAssertTrue(reclaimable.items.allSatisfy { $0.removability.isRemovableNow })
+    XCTAssertEqual(reclaimable.category(for: .images)?.items.count, 4)
+    XCTAssertEqual(reclaimable.category(for: .containers)?.items.count, 3)
+    XCTAssertEqual(reclaimable.category(for: .localVolumes)?.items.count, 2)
+    XCTAssertEqual(reclaimable.category(for: .buildCache)?.items.count, 10)
+  }
+
+  func testSelectionClosureAddsPrerequisites() throws {
+    let report = try Fixtures.report()
+    let busybox = Fixtures.imageID(Fixtures.busyboxImageID)
+    let anonymousVolume = Fixtures.volumeID(Fixtures.anonymousVolumeName)
+
+    let closure = report.selectionClosure([busybox, anonymousVolume])
+    XCTAssertEqual(
+      closure,
+      [
+        busybox, anonymousVolume,
+        Fixtures.containerID(Fixtures.anonContainerID),
+        Fixtures.containerID(Fixtures.createdContainerID),
+      ])
+    XCTAssertTrue(CleanupPlan.make(selecting: closure, from: report).exclusions.isEmpty)
+
+    XCTAssertEqual(
+      report.selectionClosure([Fixtures.volumeID("dv-orphan-data")]),
+      [Fixtures.volumeID("dv-orphan-data")])
+    let ghost = DockerResourceID(kind: .images, rawValue: "ghost")
+    XCTAssertEqual(report.selectionClosure([ghost]), [ghost], "unknown ids pass through untouched")
+  }
+
   func testEmptyReport() {
     XCTAssertEqual(UsageReport.empty.categories.count, 4)
     XCTAssertEqual(UsageReport.empty.itemCount, 0)

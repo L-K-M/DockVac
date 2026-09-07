@@ -201,6 +201,29 @@ public struct UsageReport: Hashable, Sendable {
     categories.reduce(0) { $0 + $1.items.count }
   }
 
+  /// The same snapshot with only the items that pass `isIncluded`.
+  public func filtered(_ isIncluded: (UsageItem) -> Bool) -> UsageReport {
+    UsageReport(
+      usage: usage,
+      categories: categories.map {
+        UsageCategory(kind: $0.kind, items: $0.items.filter(isIncluded))
+      },
+      capturedAt: capturedAt
+    )
+  }
+
+  /// The selected IDs plus every prerequisite they need, so a plan built from the result
+  /// never excludes an item for a missing prerequisite.
+  public func selectionClosure(_ ids: some Sequence<DockerResourceID>) -> Set<DockerResourceID> {
+    var closure = Set<DockerResourceID>()
+    var pending = Array(ids)
+    while let id = pending.popLast() {
+      guard closure.insert(id).inserted, let item = item(for: id) else { continue }
+      pending.append(contentsOf: item.removability.prerequisites)
+    }
+    return closure
+  }
+
   /// Items that are safe to remove without losing user data: dangling images that no
   /// container uses, and build cache records that no build is using.
   public var safeSuggestionIDs: [DockerResourceID] {
