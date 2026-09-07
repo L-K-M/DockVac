@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+build/
+release/
+*.dSYM/
+*.xcresult
+.DS_Store
