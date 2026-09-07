@@ -27,6 +27,5 @@ let package = Package(
   name: "DockVac",
   platforms: [.macOS(.v13)],
   products: products,
-  targets: targets,
-  swiftLanguageModes: [.v5]
+  targets: targets
 )

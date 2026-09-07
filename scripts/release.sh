@@ -44,6 +44,13 @@ if [[ "$(git branch --show-current)" != "main" ]]; then
   exit 1
 fi
 
+# Avoid creating a release commit and tag that cannot fast-forward the remote.
+git fetch --quiet origin main
+if ! git merge-base --is-ancestor origin/main main; then
+  echo "Local main is behind origin/main; update before releasing." >&2
+  exit 1
+fi
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Working tree must be clean." >&2
   exit 1
