@@ -176,9 +176,11 @@ final class DetailPanelView: NSView {
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         let value = wrapping(detail.value, size: 11)
+        let monospaced = detail.label == "ID" || detail.label == "Digests"
         value.font =
-          detail.label == "ID" || detail.label == "Digests"
-          ? .monospacedSystemFont(ofSize: 10.5, weight: .regular) : .systemFont(ofSize: 11)
+          monospaced
+          ? NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
+          : NSFont.systemFont(ofSize: 11)
         grid.addRow(with: [label, value])
       }
       grid.column(at: 0).width = 110

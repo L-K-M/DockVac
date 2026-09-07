@@ -26,24 +26,26 @@ final class DockerService {
   /// Finds the daemon and reads disk usage in stages. Cancels any scan in flight.
   func scan() {
     cancelScan()
-    scanTask = Task { [weak self] in
+    // The service lives as long as the app, so the task captures it strongly; a weak
+    // capture would be a mutable binding, which @Sendable progress closures may not use.
+    scanTask = Task {
       let result: Result<DockerDiskUsage, Error>
       do {
         let connection = try await DockerEndpointLocator().connect()
         try Task.checkCancellation()
-        self?.connection = connection
-        self?.delegate?.serviceDidConnect(connection)
+        self.connection = connection
+        self.delegate?.serviceDidConnect(connection)
         let scanner = DockerScanner(client: connection.client)
         let usage = try await scanner.scan { progress in
-          Task { @MainActor [weak self] in
-            self?.delegate?.serviceDidReportScanProgress(progress)
+          Task { @MainActor in
+            self.delegate?.serviceDidReportScanProgress(progress)
           }
         }
         result = .success(usage)
       } catch {
         result = .failure(error)
       }
-      guard let self else { return }
+      guard !Task.isCancelled else { return }
       self.scanTask = nil
       self.delegate?.serviceDidFinishScan(result)
     }
@@ -58,13 +60,12 @@ final class DockerService {
   func runCleanup(_ plan: CleanupPlan) {
     guard cleanupTask == nil, let connection else { return }
     let runner = CleanupRunner(client: connection.client)
-    cleanupTask = Task { [weak self] in
+    cleanupTask = Task {
       let state = await runner.run(plan) { state in
-        Task { @MainActor [weak self] in
-          self?.delegate?.serviceDidReportCleanupProgress(state)
+        Task { @MainActor in
+          self.delegate?.serviceDidReportCleanupProgress(state)
         }
       }
-      guard let self else { return }
       self.cleanupTask = nil
       self.delegate?.serviceDidFinishCleanup(state)
     }

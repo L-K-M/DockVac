@@ -364,7 +364,7 @@ final class TreemapView: NSView {
   }
 
   override func mouseDown(with event: NSEvent) {
-    window?.makeFirstResponder(self)
+    _ = window?.makeFirstResponder(self)
     let point = convert(event.locationInWindow, from: nil)
     guard let hit = node(at: point) else {
       delegate?.treemapView(self, didSelectItem: nil)

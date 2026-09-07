@@ -134,7 +134,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
         phase = report.capturedAt.timeIntervalSince1970 > 0 ? .report : .idle
       } else {
         let title: String
-        if case DockerEngineError.daemonNotFound = error {
+        if let engineError = error as? DockerEngineError, case .daemonNotFound = engineError {
           title = "Docker isn't running"
         } else {
           title = "Couldn't read Docker"
