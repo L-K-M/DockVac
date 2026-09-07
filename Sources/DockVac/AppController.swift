@@ -22,6 +22,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   private var confirmationSheet: ConfirmationSheetController?
   private var progressSheet: CleanupProgressSheetController?
   private var lastRunState: CleanupRunState?
+  private var smokeScriptStarted = false
 
   var isCleaning: Bool { service.isCleaning }
 
@@ -129,6 +130,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
         self.focus = nil
       }
       phase = .report
+      runSmokeScriptIfRequested()
     case .failure(let error):
       if error is CancellationError {
         phase = report.capturedAt.timeIntervalSince1970 > 0 ? .report : .idle
@@ -347,6 +349,43 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
       return inReport && !basket.isEmpty
     default:
       return true
+    }
+  }
+
+  // MARK: - Smoke script
+
+  /// `DOCKVAC_SMOKE_SCRIPT=focus-images,select-first,add-safe,review` walks through the UI
+  /// two seconds per step after the first scan, so CI can screenshot each screen. Steps only
+  /// change what is shown; nothing is ever confirmed or removed.
+  private func runSmokeScriptIfRequested() {
+    guard !smokeScriptStarted,
+      let script = ProcessInfo.processInfo.environment["DOCKVAC_SMOKE_SCRIPT"], !script.isEmpty
+    else { return }
+    smokeScriptStarted = true
+    let steps = script.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    for (index, step) in steps.enumerated() {
+      Task { @MainActor [weak self] in
+        try? await Task.sleep(nanoseconds: UInt64(index + 1) * 2_000_000_000)
+        self?.performSmokeStep(step)
+      }
+    }
+  }
+
+  private func performSmokeStep(_ step: String) {
+    switch step {
+    case "focus-images": focus(on: .images)
+    case "focus-containers": focus(on: .containers)
+    case "focus-volumes": focus(on: .localVolumes)
+    case "focus-build-cache": focus(on: .buildCache)
+    case "back": focus(on: nil)
+    case "select-first":
+      let items =
+        focus.flatMap { displayedReport.category(for: $0)?.items } ?? displayedReport.items
+      select(item: items.first?.id)
+    case "add-safe": addSafeItems(nil)
+    case "filter-reclaimable": setFilter(.reclaimable)
+    case "review": reviewAndRemove()
+    default: break
     }
   }
 
