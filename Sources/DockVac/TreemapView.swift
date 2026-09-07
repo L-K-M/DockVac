@@ -15,10 +15,18 @@ final class TreemapView: NSView {
   weak var delegate: TreemapViewDelegate?
 
   var report: UsageReport = .empty {
-    didSet { invalidateNodes() }
+    didSet {
+      if oldValue != report {
+        invalidateNodes()
+      }
+    }
   }
   var focus: DockerResourceKind? {
-    didSet { invalidateNodes() }
+    didSet {
+      if oldValue != focus {
+        invalidateNodes()
+      }
+    }
   }
   var selectedItem: DockerResourceID? {
     didSet { needsDisplay = true }
@@ -56,6 +64,7 @@ final class TreemapView: NSView {
   private func invalidateNodes() {
     nodesAreStale = true
     hoveredNodeID = nil
+    toolTip = nil
     needsLayout = true
     needsDisplay = true
   }

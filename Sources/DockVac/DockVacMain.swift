@@ -7,7 +7,10 @@ struct DockVacMain {
     let application = NSApplication.shared
     let delegate = DockVacApplicationDelegate()
     application.delegate = delegate
-    application.run()
+    // NSApplication holds its delegate weakly; keep it alive for the whole run loop.
+    withExtendedLifetime(delegate) {
+      application.run()
+    }
   }
 }
 

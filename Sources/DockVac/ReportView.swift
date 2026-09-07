@@ -24,7 +24,8 @@ final class ReportView: NSView, TreemapViewDelegate {
     treemap.delegate = self
 
     breadcrumbBack.image = Theme.symbol("chevron.left", pointSize: 12, weight: .semibold)
-    breadcrumbBack.bezelStyle = .accessoryBarAction
+    breadcrumbBack.bezelStyle = .rounded
+    breadcrumbBack.controlSize = .small
     breadcrumbBack.isBordered = true
     breadcrumbBack.target = self
     breadcrumbBack.action = #selector(backPressed)
