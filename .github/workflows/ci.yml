@@ -10,6 +10,10 @@ on:
         description: Also run the app against the fake daemon on macOS and commit screenshots to docs/screenshots
         type: boolean
         default: false
+      showcase:
+        description: Render media-sources/screenshot.png from the synthetic showcase dataset
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -95,5 +99,57 @@ jobs:
           git add docs/screenshots
           git commit -m "Add UI smoke screenshots" || exit 0
           # The branch may have moved while the app was being driven.
+          git pull --rebase --autostash origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+
+  # Manual only: renders one screenshot of the app showing the synthetic dataset
+  # from scripts/make-showcase-data.py, and commits it to media-sources.
+  showcase:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.showcase }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/build.sh --clean
+      - name: Render the screenshot
+        run: |
+          set -x
+          # The runner defaults to 1024x768; ask for something roomier if we can.
+          brew install displayplacer >/dev/null 2>&1 || true
+          if command -v displayplacer >/dev/null 2>&1; then
+            id=$(displayplacer list | awk '/Persistent screen id:/ {print $4; exit}')
+            for mode in 1920x1200 1728x1117 1680x1050; do
+              displayplacer "id:${id} res:${mode} scaling:off origin:(0,0) degree:0" && break || true
+            done
+          fi
+          read -r width height <<<"$(system_profiler SPDisplaysDataType |
+            awk '/Resolution:/ {print $2, $4; exit}')"
+          : "${width:=1024}" "${height:=768}"
+
+          python3 scripts/make-showcase-data.py --out "$RUNNER_TEMP/showcase"
+          python3 scripts/fake-docker.py --socket /tmp/dockvac-showcase.sock \
+            --fixtures "$RUNNER_TEMP/showcase" --delay 0.4 & fake=$!
+          sleep 1
+          DOCKER_HOST=unix:///tmp/dockvac-showcase.sock \
+            build/DockVac.app/Contents/MacOS/DockVac & app=$!
+          # The window is clamped to the visible frame, so cropping the menu bar
+          # and the Dock away leaves exactly the window.
+          sleep 12
+          mkdir -p media-sources
+          screencapture -x -R 0,25,"$width",$((height - 25 - 62)) media-sources/screenshot.png
+          kill $app $fake || true
+          sips -g pixelWidth -g pixelHeight media-sources/screenshot.png
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: showcase-screenshot
+          path: media-sources/screenshot.png
+      - name: Commit the screenshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add media-sources/screenshot.png
+          git commit -m "Add a showcase screenshot rendered from synthetic data" || exit 0
           git pull --rebase --autostash origin "$GITHUB_REF_NAME"
           git push origin "HEAD:$GITHUB_REF_NAME"
