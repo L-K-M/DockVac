@@ -8,14 +8,26 @@ and build cache each get a colour. Hatched tiles are in use and cannot be remove
 that hold data you might still want, such as volumes and stopped containers, are marked
 with a caution tone and explained before you confirm anything.
 
+![The report: a treemap of Docker's disk usage beside a sidebar that breaks it down by category](docs/screenshots/02-report.png)
+
+Zoom into a category to see its items, and select one to find out exactly what it is, what
+uses it, and what removing it would free:
+
+![The images category zoomed in, with a selected tile explained in the sidebar](docs/screenshots/04-item-selected.png)
+
+Nothing is removed until you review the exact list of operations and confirm:
+
+![The cleanup bar showing the selected items and the space they would free](docs/screenshots/05-cleanup-list.png)
+
 ## What it does
 
 - **Scans** the local Docker daemon over its unix socket using the Engine API, so sizes are
   exact bytes rather than the rounded figures the CLI prints.
 - **Explains** every item: whether it is dangling, unused, or in use, which containers use
   it, whether an image can be pulled again, and roughly how much removing it frees.
-- **Accounts for shared layers**: layers shared between images get their own tile, so the
-  images category adds up to what Docker itself reports.
+- **Accounts the way Docker does**: layers shared between images get their own tile, so the
+  images category adds up to what Docker itself reports, and build cache that is really an
+  image's layers is counted under that image rather than twice.
 - **Collects** the items you tick into a cleanup list. Adding an image that a stopped
   container still uses also adds that container, and tells you so.
 - **Confirms** with a sheet that lists each operation in the order it runs, its estimated
@@ -82,7 +94,10 @@ release assets plus SHA-256 checksums, and verifies the uploaded bytes. Builds a
 signed and not notarized, so Gatekeeper may require Control-clicking the app and choosing
 Open the first time.
 
-The app icon is derived from `media-sources/icon.png` with `scripts/make-icon.py`.
+The app icon is derived from `media-sources/icon.png` with `scripts/make-icon.py`. The
+screenshots above come from the manual `ui_smoke` CI job, which runs the built app against
+`scripts/fake-docker.py` (a replay of the captured Engine API fixtures) so they can be
+regenerated without a Docker daemon.
 
 ## License
 
