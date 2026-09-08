@@ -116,18 +116,29 @@ jobs:
       - name: Render the screenshot
         run: |
           set -x
-          # The runner defaults to 1024x768; ask for something roomier if we can.
+          # The runner defaults to 1024x768. 1440x900 is the sweet spot: the window
+          # fills it vertically, so only the left and right margins need cropping.
           # Failures here are fine, they just leave the smaller default in place.
           brew install displayplacer || brew install jakehilborn/jakehilborn/displayplacer || true
           if command -v displayplacer >/dev/null 2>&1; then
-            displayplacer list | sed -n '1,25p'
             id=$(displayplacer list | awk '/Persistent screen id:/ {print $4; exit}')
-            for mode in 1920x1200 1920x1080 1680x1050 1440x900; do
+            for mode in 1440x900 1680x1050 1280x800; do
               displayplacer "id:${id} res:${mode} scaling:off origin:(0,0) degree:0" && break || true
             done
           fi
-          read -r width height <<<"$(system_profiler SPDisplaysDataType |
-            awk '/Resolution:/ {print $2, $4; exit}')"
+
+          # Read the resolution back rather than trusting the request: system_profiler
+          # reports a stale value right after a mode change.
+          resolution=""
+          if command -v displayplacer >/dev/null 2>&1; then
+            resolution=$(displayplacer list | awk '/^Resolution:/ {print $2; exit}')
+          fi
+          if [ -z "$resolution" ]; then
+            resolution=$(system_profiler SPDisplaysDataType |
+              awk '/Resolution:/ {print $2 "x" $4; exit}')
+          fi
+          width=${resolution%x*}
+          height=${resolution#*x}
           : "${width:=1024}" "${height:=768}"
 
           python3 scripts/make-showcase-data.py --out "$RUNNER_TEMP/showcase"
@@ -136,11 +147,17 @@ jobs:
           sleep 1
           DOCKER_HOST=unix:///tmp/dockvac-showcase.sock \
             build/DockVac.app/Contents/MacOS/DockVac & app=$!
-          # The window is clamped to the visible frame, so cropping the menu bar
-          # and the Dock away leaves exactly the window.
           sleep 12
+
+          # The window is centred and clamped to the visible frame, so its bounds follow
+          # from the screen size: 1180 wide at most, and the full height between the menu
+          # bar and the Dock.
+          visible_height=$((height - 25 - 62))
+          window_width=$((width < 1180 ? width : 1180))
+          left=$(((width - window_width) / 2))
           mkdir -p media-sources
-          screencapture -x -R 0,25,"$width",$((height - 25 - 62)) media-sources/screenshot.png
+          screencapture -x -R "$left",25,"$window_width","$visible_height" \
+            media-sources/screenshot.png
           kill $app $fake || true
           sips -g pixelWidth -g pixelHeight media-sources/screenshot.png
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
