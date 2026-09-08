@@ -48,7 +48,10 @@ enum Fixtures {
   static let createdContainerID = "329e92db752082ed4380a145d3a877d44ea91f4b46ab310da2ea072916d85a21"
   static let anonymousVolumeName =
     "6951d436120ab2abb26d3d0fa79b6f212fb857ddfadcf1871596c993c9c6ba07"
+  /// A build cache record shared with an image layer: Docker only frees it with --all.
   static let sharedCacheRecordID = "vwsvmuey10ihejz2y1xuio17t"
+  /// A record private to the cache, which a per-record prune really removes.
+  static let privateCacheRecordID = "exswluo6t385hwtcvgod9an5d"
 
   static func imageID(_ id: String) -> DockerResourceID {
     DockerResourceID(kind: .images, rawValue: id)

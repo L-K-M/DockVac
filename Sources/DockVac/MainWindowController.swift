@@ -27,10 +27,17 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
       styleMask: [.titled, .closable, .miniaturizable, .resizable],
       backing: .buffered, defer: false)
     window.title = "DockVac"
-    window.minSize = NSSize(width: 900, height: 600)
+    window.minSize = NSSize(width: 880, height: 620)
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     window.toolbarStyle = .unified
+    if let visible = NSScreen.main?.visibleFrame {
+      // Fit small displays instead of spilling past their edges on first launch.
+      window.setContentSize(
+        NSSize(
+          width: min(window.frame.width, visible.width),
+          height: min(window.frame.height, visible.height)))
+    }
     window.setFrameAutosaveName("DockVacMainWindow")
     window.center()
     super.init(window: window)
@@ -73,7 +80,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
   func updateChrome(connection: DockerConnection?, filter: ReportFilter, phase: AppPhase) {
     window?.subtitle = connection?.summary ?? ""
     filterControl.selectedSegment = filter.rawValue
-    filterControl.isEnabled = phase == .report
+    filterControl.isEnabled = phase == .report && controller?.isSheetPresented != true
     window?.toolbar?.validateVisibleItems()
   }
 
@@ -129,7 +136,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
   }
 
   func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-    guard let controller else { return false }
+    guard let controller, !controller.isSheetPresented else { return false }
     switch item.itemIdentifier {
     case ItemID.back:
       return controller.phase == .report && controller.focus != nil

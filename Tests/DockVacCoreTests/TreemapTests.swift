@@ -104,21 +104,34 @@ final class TreemapTests: XCTestCase {
   }
 
   func testBuilderFoldsTinyItemsIntoAnAggregate() throws {
-    let report = try Fixtures.report()
+    // One big record plus a long tail that would be unreadable at any realistic size.
+    var items = [makeItem(id: "big", bytes: 5_000_000)]
+    items += (1...12).map { makeItem(id: "tiny-\($0)", bytes: UInt64($0) * 100) }
+    let report = UsageReport(
+      usage: .empty, categories: [UsageCategory(kind: .buildCache, items: items)],
+      capturedAt: Date(timeIntervalSince1970: 0))
     let builder = TreemapBuilder(
       padding: 2, categoryHeaderHeight: 10, minimumTileArea: 2_000, alwaysShowCount: 2)
     let nodes = builder.build(
-      report: report, focus: .buildCache, in: TreemapRect(x: 0, y: 0, width: 120, height: 90))
+      report: report, focus: .buildCache, in: TreemapRect(x: 0, y: 0, width: 240, height: 180))
 
     let aggregate = try XCTUnwrap(nodes.first { $0.role == .aggregate })
+    let visible = nodes.filter { $0.role == .item }
     XCTAssertTrue(aggregate.title.hasSuffix("more build cache records"))
-    XCTAssertGreaterThanOrEqual(aggregate.aggregatedIDs.count, 2)
+    XCTAssertFalse(aggregate.isRemovable, "an aggregate is never removable as one tile")
+    XCTAssertEqual(visible.count + aggregate.aggregatedIDs.count, items.count)
+    XCTAssertGreaterThanOrEqual(visible.count, 2, "alwaysShowCount tiles survive folding")
+    let visibleBytes = visible.reduce(UInt64(0)) { $0 + $1.weightBytes }
     XCTAssertEqual(
-      nodes.filter { $0.role == .item }.count + aggregate.aggregatedIDs.count,
-      report.category(for: .buildCache)?.items.filter { $0.attributedBytes > 0 }.count)
-    let itemBytes = nodes.filter { $0.role == .item }.reduce(UInt64(0)) { $0 + $1.weightBytes }
-    XCTAssertEqual(
-      itemBytes + aggregate.weightBytes, report.category(for: .buildCache)?.attributedBytes)
+      visibleBytes + aggregate.weightBytes, items.reduce(UInt64(0)) { $0 + $1.attributedBytes })
+    assertNoOverlaps(nodes.map { $0.rect })
+  }
+
+  private func makeItem(id: String, bytes: UInt64) -> UsageItem {
+    UsageItem(
+      id: DockerResourceID(kind: .buildCache, rawValue: id), title: id, subtitle: "",
+      attributedBytes: bytes, totalBytes: bytes, estimatedReclaimableBytes: bytes, statusText: "",
+      tone: .reclaimable, removability: .removable, notes: [], details: [], created: nil)
   }
 
   func testBuilderNeverFoldsASingleItem() {

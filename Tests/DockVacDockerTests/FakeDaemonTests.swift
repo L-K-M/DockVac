@@ -123,20 +123,21 @@ final class FakeDaemonTests: XCTestCase {
 
     let report = UsageAnalyzer.analyze(usage)
     XCTAssertEqual(report.itemCount, 27)
-    XCTAssertEqual(report.safeSuggestionIDs.count, 11)
+    XCTAssertEqual(
+      report.safeSuggestionIDs.count, 6, "one dangling image plus the private cache records")
 
     let plan = CleanupPlan.make(selecting: report.safeSuggestionIDs, from: report)
-    XCTAssertEqual(plan.operations.count, 11)
+    XCTAssertEqual(plan.operations.count, 6)
     XCTAssertTrue(plan.exclusions.isEmpty)
     XCTAssertEqual(plan.operations.first?.id.kind, .images, "the dangling image goes first")
 
     let state = await CleanupRunner(client: connection.client).run(plan) { _ in }
     XCTAssertTrue(state.isFinished)
-    XCTAssertEqual(state.succeededCount, 11, "\(state.statuses)")
+    XCTAssertEqual(state.succeededCount, 6, "\(state.statuses)")
     XCTAssertEqual(state.failedCount, 0)
     XCTAssertEqual(
-      state.reportedReclaimedBytes.compactMap { $0 }.count, 10,
-      "build cache reports reclaimed bytes")
+      state.reportedReclaimedBytes.compactMap { $0 }.count, 5,
+      "every build cache record reports reclaimed bytes")
     XCTAssertTrue(
       state.statuses.first.map { "\($0)".contains("Untagged 1 reference, deleted 1 layer") }
         ?? false)

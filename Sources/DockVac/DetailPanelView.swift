@@ -8,6 +8,9 @@ final class DetailPanelView: NSView {
   private let scrollView = NSScrollView()
   private let stack = NSStackView()
   private var wrappingLabels: [NSTextField] = []
+  private var gridValueLabels: [NSTextField] = []
+  private let gridLabelWidth: CGFloat = 96
+  private let gridSpacing: CGFloat = 10
   private var signature: String?
   private var currentItem: UsageItem?
   private var currentCategory: UsageCategory?
@@ -58,6 +61,10 @@ final class DetailPanelView: NSView {
     for label in wrappingLabels {
       label.preferredMaxLayoutWidth = width
     }
+    let valueWidth = max(50, width - gridLabelWidth - gridSpacing)
+    for label in gridValueLabels {
+      label.preferredMaxLayoutWidth = valueWidth
+    }
   }
 
   func apply(_ state: ReportViewState) {
@@ -83,6 +90,7 @@ final class DetailPanelView: NSView {
       view.removeFromSuperview()
     }
     wrappingLabels.removeAll()
+    gridValueLabels.removeAll()
 
     if let item = currentItem {
       build(for: item, state: state)
@@ -167,15 +175,16 @@ final class DetailPanelView: NSView {
       add(separator())
       let grid = NSGridView(numberOfColumns: 2, rows: 0)
       grid.rowSpacing = 4
-      grid.columnSpacing = 10
+      grid.columnSpacing = gridSpacing
       grid.column(at: 0).xPlacement = .trailing
       grid.translatesAutoresizingMaskIntoConstraints = false
       for detail in item.details {
         let label = Theme.label(
           detail.label, size: 11, weight: .medium, color: .secondaryLabelColor)
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        label.setContentHuggingPriority(.required, for: .horizontal)
-        let value = wrapping(detail.value, size: 11)
+        label.lineBreakMode = .byTruncatingTail
+        let value = Theme.wrappingLabel(detail.value, size: 11)
+        value.preferredMaxLayoutWidth = max(50, bounds.width - 28 - gridLabelWidth - gridSpacing)
+        gridValueLabels.append(value)
         let monospaced = detail.label == "ID" || detail.label == "Digests"
         value.font =
           monospaced
@@ -183,7 +192,7 @@ final class DetailPanelView: NSView {
           : NSFont.systemFont(ofSize: 11)
         grid.addRow(with: [label, value])
       }
-      grid.column(at: 0).width = 110
+      grid.column(at: 0).width = gridLabelWidth
       add(grid)
       grid.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -28).isActive = true
     }

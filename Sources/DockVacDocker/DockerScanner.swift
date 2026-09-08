@@ -42,7 +42,8 @@ public struct ScanProgress: Hashable, Sendable {
     let images = partial.images.reduce(UInt64(0)) { $0 + $1.uniqueSizeBytes }
     let containers = partial.containers.reduce(UInt64(0)) { $0 + $1.sizeRwBytes }
     let volumes = partial.volumes.reduce(UInt64(0)) { $0 + ($1.sizeBytes ?? 0) }
-    let cache = partial.buildCache.reduce(UInt64(0)) { $0 + $1.sizeBytes }
+    // Shared records are the image's own layers; `docker system df` excludes them too.
+    let cache = partial.buildCache.reduce(UInt64(0)) { $0 + ($1.shared ? 0 : $1.sizeBytes) }
     return images + containers + volumes + cache
   }
 }

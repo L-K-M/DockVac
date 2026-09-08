@@ -62,8 +62,15 @@ public struct DockerImage: Hashable, Sendable, Identifiable {
     sizeBytes - sharedSizeBytes
   }
 
+  /// Docker's own rule: an image with neither tags nor digests. An image pulled by digest
+  /// is deliberately pinned, not a leftover, so `docker image prune` keeps it too.
   public var isDangling: Bool {
-    repoTags.isEmpty
+    repoTags.isEmpty && repoDigests.isEmpty
+  }
+
+  /// Untagged but referenced by digest: pinned on purpose.
+  public var isPinnedByDigest: Bool {
+    repoTags.isEmpty && !repoDigests.isEmpty
   }
 
   public var shortID: String {

@@ -5,6 +5,9 @@
 - Scan the local Docker daemon over its unix socket and show images, containers, volumes,
   and build cache as a treemap with exact sizes, including a tile for layers shared
   between images.
+- Match Docker's own accounting: layers shared between images get their own tile, build
+  cache shared with an image layer is counted under that image and never offered for a
+  per-record prune, and images pinned by digest are not treated as dangling leftovers.
 - Explain each item: in use or reclaimable, which containers depend on it, whether an
   image can be pulled again, and how much removing it frees.
 - Collect items into a cleanup list, review the exact ordered operations and their

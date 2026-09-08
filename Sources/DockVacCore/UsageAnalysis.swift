@@ -309,6 +309,10 @@ public enum UsageAnalyzer {
       removability = .removable
       statusText = "Dangling (untagged)"
       tone = .reclaimable
+    } else if image.isPinnedByDigest {
+      removability = .removable
+      statusText = "Pinned by digest, no tag"
+      tone = .caution
     } else {
       removability = .removable
       statusText = "Unused (no containers)"
@@ -316,6 +320,13 @@ public enum UsageAnalyzer {
     }
 
     var notes: [UsageNote] = []
+    if image.isPinnedByDigest {
+      notes.append(
+        .init(
+          .info,
+          "Pulled or pinned by digest rather than by tag, so something referenced it deliberately. Docker's own prune keeps it."
+        ))
+    }
     if image.isDangling {
       notes.append(
         .init(
@@ -628,9 +639,18 @@ public enum UsageAnalyzer {
       removability = .blocked(reason: "A build is using this cache record right now.")
       statusText = "In use by a running build"
       tone = .locked
+    } else if record.shared || record.type == "internal" || record.type == "frontend" {
+      // BuildKit skips shared, internal, and frontend records unless pruning with --all,
+      // so a per-record prune would silently do nothing.
+      removability = .blocked(
+        reason:
+          "These bytes belong to an image layer that Docker keeps. They are freed when that image is removed, or with `docker builder prune --all`."
+      )
+      statusText = "Shared with an image layer"
+      tone = .locked
     } else {
       removability = .removable
-      statusText = record.shared ? "Shared with other cache records" : "Reclaimable"
+      statusText = "Reclaimable"
       tone = .reclaimable
     }
 
@@ -644,7 +664,7 @@ public enum UsageAnalyzer {
       notes.append(
         .init(
           .info,
-          "Shared with other cache records, so the space may only be freed once all of them are removed."
+          "Counted under the image that uses these layers, the way `docker system df` reports it, so it is not added to the total twice."
         ))
     }
 
@@ -670,7 +690,7 @@ public enum UsageAnalyzer {
       id: record.resourceID,
       title: record.displayName,
       subtitle: "\(record.typeDisplayName) · \(record.shortID)",
-      attributedBytes: record.sizeBytes,
+      attributedBytes: record.shared ? 0 : record.sizeBytes,
       totalBytes: record.sizeBytes,
       estimatedReclaimableBytes: record.sizeBytes,
       statusText: statusText,

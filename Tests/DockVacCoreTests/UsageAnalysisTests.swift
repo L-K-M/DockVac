@@ -188,17 +188,31 @@ final class UsageAnalysisTests: XCTestCase {
     XCTAssertEqual(volumeItem?.removability.prerequisites, [container.resourceID])
   }
 
-  func testBuildCacheIsRemovableUnlessInUse() throws {
+  func testBuildCacheIsRemovableUnlessSharedOrInUse() throws {
     let report = try Fixtures.report()
     let cache = try XCTUnwrap(report.category(for: .buildCache))
 
     XCTAssertEqual(cache.items.count, 10)
-    XCTAssertTrue(cache.items.allSatisfy { $0.removability.isRemovableNow })
-    XCTAssertEqual(cache.attributedBytes, 7_294_567)
+    XCTAssertEqual(cache.removableCount, 5)
+    XCTAssertEqual(
+      cache.attributedBytes, 3_097_415,
+      "shared records are the image's layers; Docker's own Reclaimable total agrees")
 
+    let privateRecord = try XCTUnwrap(
+      report.item(for: Fixtures.cacheID(Fixtures.privateCacheRecordID)))
+    XCTAssertTrue(privateRecord.removability.isRemovableNow)
+    XCTAssertEqual(privateRecord.statusText, "Reclaimable")
+    XCTAssertEqual(privateRecord.attributedBytes, 2_097_152)
+
+    // A record shared with an image layer is never removed by a per-record prune.
     let shared = try XCTUnwrap(report.item(for: Fixtures.cacheID(Fixtures.sharedCacheRecordID)))
-    XCTAssertEqual(shared.statusText, "Shared with other cache records")
+    XCTAssertTrue(shared.removability.isBlocked)
+    XCTAssertEqual(shared.statusText, "Shared with an image layer")
+    XCTAssertEqual(shared.attributedBytes, 0, "counted under the image, like docker system df")
+    XCTAssertEqual(shared.totalBytes, 600_000)
+    XCTAssertEqual(shared.estimatedReclaimableBytes, 0)
     XCTAssertEqual(shared.subtitle, "Layer · vwsvmuey10ih")
+    XCTAssertTrue(shared.removability.explanation?.contains("--all") == true)
 
     let inUse = BuildCacheRecord(
       id: "busy", type: "regular", recordDescription: "RUN make", inUse: true, shared: false,
@@ -208,6 +222,37 @@ final class UsageAnalysisTests: XCTestCase {
       for: inUse.resourceID)
     XCTAssertTrue(busyItem?.removability.isBlocked == true)
     XCTAssertEqual(busyItem?.estimatedReclaimableBytes, 0)
+    XCTAssertEqual(busyItem?.statusText, "In use by a running build")
+
+    // BuildKit also refuses internal and frontend records without --all.
+    let internalRecord = BuildCacheRecord(
+      id: "int", type: "internal", recordDescription: "", inUse: false, shared: false,
+      sizeBytes: 99, createdAt: nil, lastUsedAt: nil, usageCount: 0)
+    let internalItem = UsageAnalyzer.analyze(DockerDiskUsage(buildCache: [internalRecord])).item(
+      for: internalRecord.resourceID)
+    XCTAssertTrue(internalItem?.removability.isBlocked == true)
+    XCTAssertEqual(internalItem?.attributedBytes, 99, "only shared records move to the image")
+  }
+
+  func testImagesPinnedByDigestAreNotTreatedAsDangling() {
+    let pinned = DockerImage(
+      id: "sha256:pinned", repoTags: [], repoDigests: ["alpine@sha256:abc"], created: nil,
+      sizeBytes: 5_000_000, sharedSizeBytes: 0, containerCount: 0)
+    let report = UsageAnalyzer.analyze(DockerDiskUsage(images: [pinned]))
+    let item = try? XCTUnwrap(report.item(for: pinned.resourceID))
+
+    XCTAssertFalse(pinned.isDangling, "Docker keeps digest-referenced images when pruning")
+    XCTAssertTrue(pinned.isPinnedByDigest)
+    XCTAssertEqual(item?.statusText, "Pinned by digest, no tag")
+    XCTAssertTrue(item?.removability.isRemovableNow == true, "it can still be removed on request")
+    XCTAssertFalse(
+      report.safeSuggestionIDs.contains(pinned.resourceID), "but it is never suggested as safe")
+
+    let truly = DockerImage(
+      id: "sha256:d", repoTags: [], repoDigests: [], created: nil, sizeBytes: 1,
+      sharedSizeBytes: 0, containerCount: 0)
+    XCTAssertTrue(truly.isDangling)
+    XCTAssertFalse(truly.isPinnedByDigest)
   }
 
   func testTotalsAndSafeSuggestions() throws {
@@ -219,11 +264,18 @@ final class UsageAnalysisTests: XCTestCase {
       "unique sizes plus the shared tile add up to Docker's LayersSize")
     XCTAssertEqual(images.removableCount, 4)
     XCTAssertEqual(images.reclaimableBytes, 600_000 + 500_000 + 1_000_000 + 10_072)
-    XCTAssertEqual(report.totalAttributedBytes, 16_427_111 + 2_097_152 + 4_296_704 + 7_294_567)
+    XCTAssertEqual(
+      report.category(for: .buildCache)?.attributedBytes, 3_097_415,
+      "shared build cache bytes are not counted twice")
+    XCTAssertEqual(report.totalAttributedBytes, 16_427_111 + 2_097_152 + 4_296_704 + 3_097_415)
 
     let safe = report.safeSuggestionIDs
-    XCTAssertEqual(safe.count, 11)
+    XCTAssertEqual(safe.count, 6, "one dangling image plus the five private cache records")
     XCTAssertTrue(safe.contains(Fixtures.imageID(Fixtures.danglingImageID)))
+    XCTAssertTrue(safe.contains(Fixtures.cacheID(Fixtures.privateCacheRecordID)))
+    XCTAssertFalse(
+      safe.contains(Fixtures.cacheID(Fixtures.sharedCacheRecordID)),
+      "a per-record prune would silently not remove a shared record")
     XCTAssertFalse(
       safe.contains(Fixtures.imageID(Fixtures.helloWorldImageID)),
       "tagged images are never suggested")
@@ -241,7 +293,7 @@ final class UsageAnalysisTests: XCTestCase {
     XCTAssertEqual(reclaimable.category(for: .images)?.items.count, 4)
     XCTAssertEqual(reclaimable.category(for: .containers)?.items.count, 3)
     XCTAssertEqual(reclaimable.category(for: .localVolumes)?.items.count, 2)
-    XCTAssertEqual(reclaimable.category(for: .buildCache)?.items.count, 10)
+    XCTAssertEqual(reclaimable.category(for: .buildCache)?.items.count, 5)
   }
 
   func testSelectionClosureAddsPrerequisites() throws {

@@ -59,28 +59,31 @@ jobs:
           mkdir -p shots
           system_profiler SPDisplaysDataType | grep -i resolution || true
           binary=build/DockVac.app/Contents/MacOS/DockVac
+          # The window fills the runner's 1024x768 display between the menu bar and the Dock.
+          shot() { screencapture -x -R 0,25,1024,681 "shots/$1.png"; }
 
           # No daemon anywhere: the app must explain that Docker is not running.
           "$binary" & app=$!
-          sleep 8
-          screencapture -x shots/00-no-docker.png
+          sleep 8; shot 00-no-docker
           kill $app || true
           sleep 2
 
           # Fixture-backed daemon; the delay keeps the scanning screen visible for a while.
-          python3 scripts/fake-docker.py --socket /tmp/dockvac-fake.sock --delay 1.5 & fake=$!
+          # The smoke script performs one step every three seconds after the scan finishes.
+          python3 scripts/fake-docker.py --socket /tmp/dockvac-fake.sock --delay 1.0 & fake=$!
           sleep 1
           DOCKER_HOST=unix:///tmp/dockvac-fake.sock \
           DOCKVAC_SMOKE_SCRIPT="focus-images,select-first,add-safe,review" \
             "$binary" & app=$!
-          sleep 4;  screencapture -x shots/01-scanning.png
-          sleep 4;  screencapture -x shots/02-report.png
-          sleep 2;  screencapture -x shots/03-images-zoomed.png
-          sleep 2;  screencapture -x shots/04-item-selected.png
-          sleep 2;  screencapture -x shots/05-cleanup-list.png
-          sleep 3;  screencapture -x shots/06-review-sheet.png
+          sleep 3;  shot 01-scanning
+          sleep 4;  shot 02-report
+          sleep 3;  shot 03-images-zoomed
+          sleep 3;  shot 04-item-selected
+          sleep 3;  shot 05-cleanup-list
+          sleep 4;  shot 06-review-sheet
           kill $app $fake || true
           ls -la shots
+
       - name: Commit screenshots
         run: |
           mkdir -p docs/screenshots

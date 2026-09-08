@@ -258,7 +258,8 @@ public struct TreemapBuilder: Sendable {
         kind: category.kind,
         resourceID: nil,
         title: category.kind.displayName,
-        subtitle: "\(ByteFormat.string(category.attributedBytes)) · \(category.items.count)",
+        subtitle:
+          "\(ByteFormat.string(category.attributedBytes)) · \(ByteFormat.count(category.items.count, singular: category.kind.singularName, plural: category.kind.pluralName))",
         weightBytes: category.attributedBytes,
         isRemovable: false,
         rect: tile,

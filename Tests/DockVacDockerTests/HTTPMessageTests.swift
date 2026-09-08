@@ -121,6 +121,32 @@ final class HTTPMessageTests: XCTestCase {
     XCTAssertThrowsError(try noColon.feed(Data("HTTP/1.1 200 OK\r\nbroken header\r\n\r\n".utf8)))
   }
 
+  func testRejectsChunkSizesThatWouldOverflowOrExhaustMemory() throws {
+    // Int.max as a chunk size used to overflow `remaining + 2` and trap the whole app.
+    var overflowing = HTTPResponseParser()
+    XCTAssertThrowsError(
+      try overflowing.feed(
+        Data(
+          "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7fffffffffffffff\r\nabc".utf8))
+    ) { error in
+      guard case HTTPParseError.malformed(let detail) = error else {
+        return XCTFail("unexpected \(error)")
+      }
+      XCTAssertTrue(detail.contains("exceeds the body limit"), detail)
+    }
+
+    // A merely huge chunk is refused before it is buffered, too.
+    var huge = HTTPResponseParser()
+    XCTAssertThrowsError(
+      try huge.feed(Data("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7fffffff\r\n".utf8)))
+
+    // A chunk within the limit still parses.
+    var fine = HTTPResponseParser()
+    try fine.feed(
+      Data("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n".utf8))
+    XCTAssertEqual(String(decoding: try fine.finish().body, as: UTF8.self), "abc")
+  }
+
   func testFinishRejectsTruncatedResponses() throws {
     var empty = HTTPResponseParser()
     XCTAssertThrowsError(try empty.finish()) { error in

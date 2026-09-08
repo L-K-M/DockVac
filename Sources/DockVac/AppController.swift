@@ -364,7 +364,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   // MARK: - Smoke script
 
   /// `DOCKVAC_SMOKE_SCRIPT=focus-images,select-first,add-safe,review` walks through the UI
-  /// two seconds per step after the first scan, so CI can screenshot each screen. Steps only
+  /// three seconds per step after the first scan, so CI can screenshot each screen. Steps only
   /// change what is shown; nothing is ever confirmed or removed.
   private func runSmokeScriptIfRequested() {
     guard !smokeScriptStarted,
@@ -374,7 +374,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
     let steps = script.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
     for (index, step) in steps.enumerated() {
       Task { @MainActor [weak self] in
-        try? await Task.sleep(nanoseconds: UInt64(index + 1) * 2_000_000_000)
+        try? await Task.sleep(nanoseconds: UInt64(index + 1) * 3_000_000_000)
         self?.performSmokeStep(step)
       }
     }

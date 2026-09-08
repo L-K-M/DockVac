@@ -37,7 +37,7 @@ final class CleanupPlanTests: XCTestCase {
   func testOperationsAreOrderedContainersImagesVolumesBuildCache() throws {
     let report = try Fixtures.report()
     let selection: [DockerResourceID] = [
-      Fixtures.cacheID(Fixtures.sharedCacheRecordID),
+      Fixtures.cacheID(Fixtures.privateCacheRecordID),
       Fixtures.volumeID("dv-orphan-data"),
       Fixtures.imageID(Fixtures.busyboxImageID),
       Fixtures.containerID(Fixtures.createdContainerID),
@@ -57,7 +57,7 @@ final class CleanupPlanTests: XCTestCase {
     XCTAssertEqual(plan.operations[2].id, Fixtures.imageID(Fixtures.busyboxImageID))
     XCTAssertEqual(plan.operations[4].id, Fixtures.volumeID("dv-orphan-data"))
     XCTAssertEqual(
-      plan.estimatedReclaimableBytes, 0 + 0 + 4_417_150 + 500_000 + 3_145_728 + 102_400 + 600_000)
+      plan.estimatedReclaimableBytes, 0 + 0 + 4_417_150 + 500_000 + 3_145_728 + 102_400 + 2_097_152)
     XCTAssertEqual(plan.summary, "2 images, 2 containers, 2 volumes, 1 build cache record")
     XCTAssertEqual(plan.counts()[.images], 2)
   }
@@ -70,7 +70,7 @@ final class CleanupPlanTests: XCTestCase {
         Fixtures.imageID(Fixtures.danglingImageID),
         Fixtures.containerID(Fixtures.exitedContainerID),
         Fixtures.volumeID("dv-orphan-data"),
-        Fixtures.cacheID(Fixtures.sharedCacheRecordID),
+        Fixtures.cacheID(Fixtures.privateCacheRecordID),
       ], from: report)
 
     let byKind = Dictionary(grouping: plan.operations, by: { $0.id.kind })
@@ -106,8 +106,8 @@ final class CleanupPlanTests: XCTestCase {
     let cache = try XCTUnwrap(byKind[.buildCache]?.first)
     XCTAssertEqual(cache.title, "Remove build cache record")
     XCTAssertEqual(
-      cache.cliEquivalent, "docker builder prune --force --filter id=vwsvmuey10ihejz2y1xuio17t")
-    XCTAssertEqual(cache.action, .pruneBuildCache(id: Fixtures.sharedCacheRecordID))
+      cache.cliEquivalent, "docker builder prune --force --filter id=exswluo6t385hwtcvgod9an5d")
+    XCTAssertEqual(cache.action, .pruneBuildCache(id: Fixtures.privateCacheRecordID))
 
     XCTAssertEqual(plan.cliScript.split(separator: "\n").count, 5)
     XCTAssertEqual(
@@ -166,7 +166,7 @@ final class CleanupPlanTests: XCTestCase {
       selecting: [
         Fixtures.containerID(Fixtures.exitedContainerID),
         Fixtures.volumeID("dv-orphan-data"),
-        Fixtures.cacheID(Fixtures.sharedCacheRecordID),
+        Fixtures.cacheID(Fixtures.privateCacheRecordID),
       ], from: report)
     var state = CleanupRunState(plan: plan, startedAt: Date(timeIntervalSince1970: 0))
 

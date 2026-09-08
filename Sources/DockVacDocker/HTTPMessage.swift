@@ -257,6 +257,10 @@ public struct HTTPResponseParser: Sendable {
     guard let size = Int(sizeText, radix: 16), size >= 0 else {
       throw HTTPParseError.malformed("invalid chunk size \"\(line)\"")
     }
+    // Check the budget before `remaining + 2` can overflow on an absurd chunk header.
+    guard size <= Self.maximumBodySize - body.count else {
+      throw HTTPParseError.malformed("chunk of \(sizeText) bytes exceeds the body limit")
+    }
     chunkRemaining = size
     return true
   }
