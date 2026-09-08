@@ -75,11 +75,13 @@ jobs:
           DOCKER_HOST=unix:///tmp/dockvac-fake.sock \
           DOCKVAC_SMOKE_SCRIPT="focus-images,select-first,add-safe,review" \
             "$binary" & app=$!
+          # The smoke script runs one step every three seconds once the scan finishes;
+          # each capture waits past its step so it shows the state that step produced.
           sleep 3;  shot 01-scanning
-          sleep 4;  shot 02-report
-          sleep 3;  shot 03-images-zoomed
+          sleep 5;  shot 02-report
+          sleep 4;  shot 03-images-zoomed
           sleep 3;  shot 04-item-selected
-          sleep 3;  shot 05-cleanup-list
+          sleep 4;  shot 05-cleanup-list
           sleep 4;  shot 06-review-sheet
           kill $app $fake || true
           ls -la shots

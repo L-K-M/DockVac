@@ -15,9 +15,10 @@ uses it, and what removing it would free:
 
 ![The images category zoomed in, with a selected tile explained in the sidebar](docs/screenshots/04-item-selected.png)
 
-Nothing is removed until you review the exact list of operations and confirm:
+Nothing is removed until you review the exact list of operations, in the order they run,
+and confirm:
 
-![The cleanup bar showing the selected items and the space they would free](docs/screenshots/05-cleanup-list.png)
+![The confirmation sheet listing each numbered operation, what it frees, and its warnings](docs/screenshots/06-review-sheet.png)
 
 ## What it does
 
