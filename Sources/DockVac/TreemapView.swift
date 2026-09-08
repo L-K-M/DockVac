@@ -265,36 +265,61 @@ final class TreemapView: NSView {
       }
     }
 
-    let paragraph = NSMutableParagraphStyle()
-    paragraph.lineBreakMode = .byTruncatingMiddle
     let titleFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    let titleWidth = inset.width - badgeWidth
     let title = NSAttributedString(
       string: node.title,
-      attributes: [.font: titleFont, .foregroundColor: textColor, .paragraphStyle: paragraph])
-    let titleRect = NSRect(
-      x: inset.minX, y: inset.minY, width: inset.width - badgeWidth, height: 16)
-    title.draw(in: titleRect)
+      attributes: [
+        .font: titleFont, .foregroundColor: textColor,
+        .paragraphStyle: Self.truncation(of: node.title, font: titleFont, fitting: titleWidth),
+      ])
+    title.draw(in: NSRect(x: inset.minX, y: inset.minY, width: titleWidth, height: 16))
 
     if inset.height >= 34 {
+      let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
       let subtitle = NSAttributedString(
         string: node.subtitle,
         attributes: [
-          .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+          .font: font,
           .foregroundColor: textColor.withAlphaComponent(0.85),
-          .paragraphStyle: paragraph,
+          .paragraphStyle: Self.truncation(of: node.subtitle, font: font, fitting: inset.width),
         ])
       subtitle.draw(in: NSRect(x: inset.minX, y: inset.minY + 17, width: inset.width, height: 15))
     }
-    if inset.height >= 52, let item {
+    if inset.height >= 52, let item, !item.statusText.isEmpty {
+      let font = NSFont.systemFont(ofSize: 10.5)
+      // A status cut down to a few characters says nothing; leave it out instead.
+      guard Self.fits(item.statusText, font: font, in: inset.width, atLeast: 0.55) else { return }
       let status = NSAttributedString(
         string: item.statusText,
         attributes: [
-          .font: NSFont.systemFont(ofSize: 10.5),
+          .font: font,
           .foregroundColor: textColor.withAlphaComponent(0.75),
-          .paragraphStyle: paragraph,
+          .paragraphStyle: Self.truncation(of: item.statusText, font: font, fitting: inset.width),
         ])
       status.draw(in: NSRect(x: inset.minX, y: inset.minY + 33, width: inset.width, height: 14))
     }
+  }
+
+  /// Truncates from the end, which keeps a name recognisable ("postgres:1…"), except when
+  /// enough of the text fits that dropping the middle keeps both ends ("registry…myapp:2.4.1").
+  private static func truncation(of text: String, font: NSFont, fitting width: CGFloat)
+    -> NSParagraphStyle
+  {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode =
+      fits(text, font: font, in: width, atLeast: 0.7) ? .byTruncatingMiddle : .byTruncatingTail
+    return paragraph
+  }
+
+  /// Whether at least `fraction` of the text's width is available.
+  private static func fits(
+    _ text: String, font: NSFont, in width: CGFloat, atLeast fraction: CGFloat
+  )
+    -> Bool
+  {
+    let needed = (text as NSString).size(withAttributes: [.font: font]).width
+    return needed <= 0 || width >= needed * fraction
   }
 
   private func drawHatch(in rect: NSRect, clip: NSBezierPath) {

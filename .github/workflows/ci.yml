@@ -117,10 +117,12 @@ jobs:
         run: |
           set -x
           # The runner defaults to 1024x768; ask for something roomier if we can.
-          brew install displayplacer >/dev/null 2>&1 || true
+          # Failures here are fine, they just leave the smaller default in place.
+          brew install displayplacer || brew install jakehilborn/jakehilborn/displayplacer || true
           if command -v displayplacer >/dev/null 2>&1; then
+            displayplacer list | sed -n '1,25p'
             id=$(displayplacer list | awk '/Persistent screen id:/ {print $4; exit}')
-            for mode in 1920x1200 1728x1117 1680x1050; do
+            for mode in 1920x1200 1920x1080 1680x1050 1440x900; do
               displayplacer "id:${id} res:${mode} scaling:off origin:(0,0) degree:0" && break || true
             done
           fi
