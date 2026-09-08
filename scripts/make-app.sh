@@ -23,6 +23,8 @@ rm -rf -- "$APP_ROOT"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$binary_dir/DockVac" "$MACOS_DIR/DockVac"
 cp "$REPOSITORY_ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
+# Regenerate with scripts/make-icon.py when media-sources/icon.png changes.
+cp "$REPOSITORY_ROOT/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 cp "$REPOSITORY_ROOT/LICENSE" "$RESOURCES_DIR/LICENSE.txt"
 
 # Ad-hoc signing is enough for a local build; releases remain unnotarized.

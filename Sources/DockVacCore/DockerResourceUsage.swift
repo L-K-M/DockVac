@@ -1,11 +1,43 @@
 import Foundation
 
 /// Stable Docker storage categories exposed to the application layer.
-public enum DockerResourceKind: CaseIterable, Equatable, Sendable {
+public enum DockerResourceKind: String, CaseIterable, Codable, Hashable, Sendable {
   case images
   case containers
   case localVolumes
   case buildCache
+
+  /// Order used for display and for treemap grouping.
+  public static let displayOrder: [DockerResourceKind] = [
+    .images, .containers, .localVolumes, .buildCache,
+  ]
+
+  public var displayName: String {
+    switch self {
+    case .images: return "Images"
+    case .containers: return "Containers"
+    case .localVolumes: return "Volumes"
+    case .buildCache: return "Build Cache"
+    }
+  }
+
+  public var singularName: String {
+    switch self {
+    case .images: return "image"
+    case .containers: return "container"
+    case .localVolumes: return "volume"
+    case .buildCache: return "build cache record"
+    }
+  }
+
+  public var pluralName: String {
+    switch self {
+    case .images: return "images"
+    case .containers: return "containers"
+    case .localVolumes: return "volumes"
+    case .buildCache: return "build cache records"
+    }
+  }
 }
 
 /// Validated storage totals passed from a Docker driver to the application.
