@@ -3,6 +3,9 @@
 DockVac is a native macOS app that shows what Docker keeps on your disk as a treemap, and
 lets you remove exactly the pieces you choose. No `docker system prune`, no surprises.
 
+> [!IMPORTANT]
+> LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
+
 Every tile's area is proportional to the space it occupies. Images, containers, volumes,
 and build cache each get a colour. Hatched tiles are in use and cannot be removed. Items
 that hold data you might still want, such as volumes and stopped containers, are marked
