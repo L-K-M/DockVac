@@ -16,6 +16,9 @@ final class DockerEndpointResolutionTests: XCTestCase {
     XCTAssertEqual(
       DockerEndpointResolution.parseHost("ssh://user@host"),
       .ssh(try DockerSSHHost("ssh://user@host")))
+    XCTAssertEqual(
+      DockerEndpointResolution.parseHost("SSH://user@host"),
+      .ssh(try DockerSSHHost("ssh://user@host")))
     XCTAssertNil(DockerEndpointResolution.parseHost(""))
     XCTAssertNil(DockerEndpointResolution.parseHost("unix://"))
   }

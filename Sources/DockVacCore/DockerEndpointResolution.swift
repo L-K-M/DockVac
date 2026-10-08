@@ -31,7 +31,9 @@ public enum DockerEndpointResolution {
     if trimmed.hasPrefix("/") {
       return .unixSocket(path: trimmed)
     }
-    if trimmed.hasPrefix("ssh://"), let host = try? DockerSSHHost(trimmed) {
+    if trimmed.lowercased().hasPrefix("\(DockerSSHHost.scheme)://"),
+      let host = try? DockerSSHHost(trimmed)
+    {
       return .ssh(host)
     }
     return .unsupported(value: trimmed)

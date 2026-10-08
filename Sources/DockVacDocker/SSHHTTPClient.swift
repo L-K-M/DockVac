@@ -27,7 +27,7 @@ struct SSHHTTPClient: Sendable {
     plan.operations.map { operation in
       let command = operation.cliEquivalent.replacingOccurrences(
         of: "docker ", with: dockerCommand(""), options: .anchored)
-      return ([Self.executable.path] + arguments(command: command)).map(Self.shellQuote).joined(
+      return ([executable.path] + arguments(command: command)).map(Self.shellQuote).joined(
         separator: " ")
     }.joined(separator: "\n")
   }

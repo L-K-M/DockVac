@@ -92,7 +92,7 @@ public struct DockerEndpointLocator: Sendable {
         switch configured.host {
         case .ssh(let host):
           return try await probe(DockerEndpoint(sshHost: host, origin: configured.origin))
-        case .unsupported(let value) where value.hasPrefix("ssh:"):
+        case .unsupported(let value) where value.lowercased().hasPrefix("\(DockerSSHHost.scheme):"):
           throw DockerSSHHostError.invalidAddress
         default:
           break

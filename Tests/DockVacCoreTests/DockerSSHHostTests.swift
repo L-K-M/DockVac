@@ -3,6 +3,12 @@ import XCTest
 @testable import DockVacCore
 
 final class DockerSSHHostTests: XCTestCase {
+  func testSSHSchemeIsCaseInsensitive() throws {
+    let expected = try DockerSSHHost("ssh://deploy@production:2222")
+    XCTAssertEqual(try DockerSSHHost("SSH://deploy@production:2222"), expected)
+    XCTAssertEqual(try DockerSSHHost("sSh://deploy@production:2222"), expected)
+  }
+
   func testParsesUserPortAliasAndSocketPath() throws {
     let host = try DockerSSHHost(" ssh://deploy@production:2222/run/user/1000/docker.sock \n")
     XCTAssertEqual(host.host, "production")

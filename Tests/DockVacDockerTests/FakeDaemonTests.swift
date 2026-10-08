@@ -157,14 +157,16 @@ final class FakeDaemonTests: XCTestCase {
   }
 
   func testMalformedConfiguredSSHNeverFallsBackToLocalDocker() async throws {
-    let locator = DockerEndpointLocator(
-      environment: ["DOCKER_HOST": "ssh://user:password@server"],
-      homeDirectory: NSTemporaryDirectory(), probeTimeout: 1)
-    do {
-      _ = try await locator.connect()
-      XCTFail("expected invalid SSH address")
-    } catch {
-      XCTAssertTrue(error is DockerSSHHostError, "\(error)")
+    for scheme in ["ssh", "SSH", "sSh"] {
+      let locator = DockerEndpointLocator(
+        environment: ["DOCKER_HOST": "\(scheme)://user:password@server"],
+        homeDirectory: NSTemporaryDirectory(), probeTimeout: 1)
+      do {
+        _ = try await locator.connect()
+        XCTFail("expected invalid SSH address")
+      } catch {
+        XCTAssertTrue(error is DockerSSHHostError, "\(error)")
+      }
     }
     XCTAssertTrue(recordedRequests().isEmpty)
   }
@@ -178,13 +180,16 @@ final class FakeDaemonTests: XCTestCase {
     try FileManager.default.createSymbolicLink(
       atPath: localSocket.path, withDestinationPath: socketPath)
     defer { try? FileManager.default.removeItem(at: home) }
-    let locator = DockerEndpointLocator(
-      environment: ["DOCKER_HOST": "ssh://127.0.0.1:1"], homeDirectory: home.path, probeTimeout: 1)
-    do {
-      _ = try await locator.connect()
-      XCTFail("expected SSH failure")
-    } catch let error as DockerEngineError {
-      guard case .sshUnavailable = error else { return XCTFail("unexpected \(error)") }
+    for scheme in ["ssh", "SSH", "sSh"] {
+      let locator = DockerEndpointLocator(
+        environment: ["DOCKER_HOST": "\(scheme)://127.0.0.1:1"], homeDirectory: home.path,
+        probeTimeout: 1)
+      do {
+        _ = try await locator.connect()
+        XCTFail("expected SSH failure")
+      } catch let error as DockerEngineError {
+        guard case .sshUnavailable = error else { return XCTFail("unexpected \(error)") }
+      }
     }
     XCTAssertTrue(recordedRequests().isEmpty, "A failed remote request must not reach local Docker")
   }

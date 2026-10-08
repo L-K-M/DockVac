@@ -45,8 +45,10 @@ final class SSHHTTPClientTests: XCTestCase {
   private func assertChildExited(file: StaticString = #filePath, line: UInt = #line) throws {
     let pid = try XCTUnwrap(
       Int32(String(contentsOfFile: markerPath + ".pid", encoding: .utf8)), file: file, line: line)
-    XCTAssertEqual(kill(pid, 0), -1, "SSH child must be reaped", file: file, line: line)
-    XCTAssertEqual(errno, ESRCH, file: file, line: line)
+    let result = kill(pid, 0)
+    let error = errno
+    XCTAssertEqual(result, -1, "SSH child must be reaped", file: file, line: line)
+    XCTAssertEqual(error, ESRCH, file: file, line: line)
   }
 
   func testUsesSafeArgumentsAndQuotesTheRemoteSocket() throws {
@@ -74,8 +76,10 @@ final class SSHHTTPClientTests: XCTestCase {
       title: "Remove volume", target: "data", detail: "", estimatedReclaimableBytes: 0,
       warnings: [], cliEquivalent: "docker volume rm data")
     let plan = CleanupPlan(operations: [operation], exclusions: [])
-    let script = client.equivalentScript(for: plan).replacingOccurrences(
-      of: "'/usr/bin/ssh'", with: "'\(Self.fakeExecutable.path)'", options: .anchored)
+    let script = client.equivalentScript(for: plan)
+    guard script.hasPrefix("'\(Self.fakeExecutable.path)'") else {
+      return XCTFail("The script must use the injected SSH executable")
+    }
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
     process.arguments = ["-c", script]
@@ -133,7 +137,6 @@ final class SSHHTTPClientTests: XCTestCase {
   }
 
   func testTimeoutAndCancellationKillAndReapAHangingSSHProcess() async throws {
-    let started = Date()
     do {
       _ = try await client("hang", timeout: 0.5).send(HTTPRequest(method: "GET", path: "/_ping"))
       XCTFail("expected timeout")
@@ -149,6 +152,7 @@ final class SSHHTTPClientTests: XCTestCase {
     while !FileManager.default.fileExists(atPath: markerPath + ".pid"), Date() < deadline {
       try await Task.sleep(nanoseconds: 10_000_000)
     }
+    let cancellationStarted = Date()
     task.cancel()
     do {
       _ = try await task.value
@@ -156,7 +160,7 @@ final class SSHHTTPClientTests: XCTestCase {
     } catch {
       XCTAssertTrue(error is CancellationError, "\(error)")
     }
-    XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+    XCTAssertLessThan(Date().timeIntervalSince(cancellationStarted), 5)
     try assertChildExited()
   }
 
