@@ -3,7 +3,7 @@ import XCTest
 @testable import DockVacCore
 
 final class DockerEndpointResolutionTests: XCTestCase {
-  func testParsesHostValues() {
+  func testParsesHostValues() throws {
     XCTAssertEqual(
       DockerEndpointResolution.parseHost("unix:///var/run/docker.sock"),
       .unixSocket(path: "/var/run/docker.sock"))
@@ -14,7 +14,11 @@ final class DockerEndpointResolutionTests: XCTestCase {
       DockerEndpointResolution.parseHost("tcp://127.0.0.1:2375"),
       .unsupported(value: "tcp://127.0.0.1:2375"))
     XCTAssertEqual(
-      DockerEndpointResolution.parseHost("ssh://user@host"), .unsupported(value: "ssh://user@host"))
+      DockerEndpointResolution.parseHost("ssh://user@host"),
+      .ssh(try DockerSSHHost("ssh://user@host")))
+    XCTAssertEqual(
+      DockerEndpointResolution.parseHost("SSH://user@host"),
+      .ssh(try DockerSSHHost("ssh://user@host")))
     XCTAssertNil(DockerEndpointResolution.parseHost(""))
     XCTAssertNil(DockerEndpointResolution.parseHost("unix://"))
   }
@@ -41,7 +45,7 @@ final class DockerEndpointResolutionTests: XCTestCase {
     XCTAssertNil(DockerEndpointResolution.currentContextName(environment: [:], configJSON: nil))
   }
 
-  func testReadsContextMetadata() {
+  func testReadsContextMetadata() throws {
     let meta = Data(
       """
       {"Name":"desktop-linux","Metadata":{"Description":"Docker Desktop"},
@@ -55,9 +59,27 @@ final class DockerEndpointResolutionTests: XCTestCase {
     let remote = Data(
       "{\"Name\":\"remote\",\"Endpoints\":{\"docker\":{\"Host\":\"ssh://box\"}}}".utf8)
     XCTAssertEqual(
-      DockerEndpointResolution.contextMetadata(from: remote)?.host, .unsupported(value: "ssh://box")
+      DockerEndpointResolution.contextMetadata(from: remote)?.host,
+      .ssh(try DockerSSHHost("ssh://box"))
     )
     XCTAssertNil(DockerEndpointResolution.contextMetadata(from: Data("{\"Name\":\"x\"}".utf8)))
+  }
+
+  func testConfiguredSSHHostIsSelectedBeforeLocalCandidates() throws {
+    let remote = try DockerSSHHost("ssh://deploy@production:2222")
+    let context = DockerEndpointResolution.ContextMetadata(name: "remote", host: .ssh(remote))
+    let selected = DockerEndpointResolution.configuredHost(environment: [:], activeContext: context)
+    XCTAssertEqual(selected?.host, .ssh(remote))
+    XCTAssertEqual(selected?.origin, "Docker context remote")
+
+    let explicit = DockerEndpointResolution.configuredHost(
+      environment: ["DOCKER_HOST": "ssh://other"], activeContext: context)
+    XCTAssertEqual(explicit?.host, .ssh(try DockerSSHHost("other")))
+    XCTAssertEqual(explicit?.origin, "DOCKER_HOST")
+
+    let malformed = DockerEndpointResolution.configuredHost(
+      environment: ["DOCKER_HOST": "ssh://user:password@server"], activeContext: context)
+    XCTAssertEqual(malformed?.host, .unsupported(value: "ssh://user:password@server"))
   }
 
   func testOrdersCandidatesAndReportsUnsupportedHosts() {

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Connect to Docker servers over SSH using your keys, agent, and SSH configuration.
+  Support SSH Docker contexts, custom ports, and rootless sockets. Show the target before
+  removal and clear selections when switching servers.
+
 - Scan the local Docker daemon over its unix socket and show images, containers, volumes,
   and build cache as a treemap with exact sizes, including a tile for layers shared
   between images.

@@ -5,6 +5,7 @@ import Foundation
 public enum DockerEngineError: Error, Hashable, Sendable, LocalizedError {
   /// The socket could not be opened or connected.
   case socketUnavailable(path: String, detail: String)
+  case sshUnavailable(host: String, detail: String)
   /// No candidate socket answered. `attempts` lists each path and why it failed.
   case daemonNotFound(attempts: [String], unsupported: [String])
   case timedOut(path: String)
@@ -17,6 +18,9 @@ public enum DockerEngineError: Error, Hashable, Sendable, LocalizedError {
     switch self {
     case .socketUnavailable(let path, let detail):
       return "Could not connect to Docker at \(path): \(detail)"
+    case .sshUnavailable(let host, let detail):
+      return
+        "Could not connect to Docker at \(host) over SSH.\n\(detail)\nCheck SSH key/agent authentication, the host's known_hosts entry, and Docker socket access. The server needs docker on its PATH."
     case .daemonNotFound(let attempts, let unsupported):
       var lines = ["Docker does not seem to be running."]
       if !attempts.isEmpty {
@@ -24,7 +28,8 @@ public enum DockerEngineError: Error, Hashable, Sendable, LocalizedError {
       }
       if !unsupported.isEmpty {
         lines.append(
-          "Only local unix sockets are supported, not " + unsupported.joined(separator: ", ") + ".")
+          "Only unix sockets and SSH are supported, not " + unsupported.joined(separator: ", ")
+            + ".")
       }
       return lines.joined(separator: "\n")
     case .timedOut(let path):

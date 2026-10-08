@@ -31,6 +31,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Install driver test dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends python3 openssh-client
       - run: swift format lint --recursive --strict Sources Tests Package.swift
       - run: bash -n scripts/*.sh
       - run: swift test

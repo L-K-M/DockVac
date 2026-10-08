@@ -38,6 +38,12 @@ var targets: [Target] = [
       dependencies: ["DockVacCore", "DockVacDocker"],
       swiftSettings: [.swiftLanguageMode(.v6)]
     ))
+  targets.append(
+    .testTarget(
+      name: "DockVacAppTests",
+      dependencies: ["DockVac"],
+      swiftSettings: [.swiftLanguageMode(.v6)]
+    ))
 #endif
 
 let package = Package(
