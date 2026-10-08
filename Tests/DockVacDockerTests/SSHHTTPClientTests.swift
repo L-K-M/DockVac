@@ -21,13 +21,13 @@ final class SSHHTTPClientTests: XCTestCase {
   }
 
   override func setUpWithError() throws {
+    markerPath = NSTemporaryDirectory() + "dockvac-ssh-\(UUID().uuidString)"
     let searchPaths = ProcessInfo.processInfo.environment["PATH", default: ""].split(separator: ":")
     guard
       searchPaths.contains(where: { FileManager.default.isExecutableFile(atPath: "\($0)/python3") })
     else {
       throw XCTSkip("python3 is required for SSH subprocess tests")
     }
-    markerPath = NSTemporaryDirectory() + "dockvac-ssh-\(UUID().uuidString)"
   }
 
   override func tearDownWithError() throws {
