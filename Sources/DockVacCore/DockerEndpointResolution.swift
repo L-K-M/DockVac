@@ -13,6 +13,7 @@ public struct DockerEndpointCandidate: Hashable, Sendable {
 
 public enum DockerHostSetting: Hashable, Sendable {
   case unixSocket(path: String)
+  case ssh(DockerSSHHost)
   case unsupported(value: String)
 }
 
@@ -30,7 +31,22 @@ public enum DockerEndpointResolution {
     if trimmed.hasPrefix("/") {
       return .unixSocket(path: trimmed)
     }
+    if trimmed.hasPrefix("ssh://"), let host = try? DockerSSHHost(trimmed) {
+      return .ssh(host)
+    }
     return .unsupported(value: trimmed)
+  }
+
+  /// An explicitly selected SSH host is authoritative; its failure must never fall back
+  /// to a local daemon with unrelated data.
+  public static func configuredHost(
+    environment: [String: String], activeContext: ContextMetadata?
+  ) -> (host: DockerHostSetting, origin: String)? {
+    if let value = environment["DOCKER_HOST"], let host = parseHost(value) {
+      return (host, "DOCKER_HOST")
+    }
+    guard let activeContext else { return nil }
+    return (activeContext.host, "Docker context \(activeContext.name)")
   }
 
   /// The active Docker context name, if it is not the built-in default.
@@ -90,8 +106,7 @@ public enum DockerEndpointResolution {
     ]
   }
 
-  /// Orders candidates: explicit environment first, then the active context, then well-known
-  /// paths, without duplicates.
+  /// Orders local candidates. The driver connects to configured SSH hosts separately.
   public static func orderedCandidates(
     environment: [String: String],
     homeDirectory: String,
@@ -104,6 +119,8 @@ public enum DockerEndpointResolution {
       switch host {
       case .unixSocket(let path):
         candidates.append(DockerEndpointCandidate(socketPath: path, origin: "DOCKER_HOST"))
+      case .ssh:
+        break
       case .unsupported(let value):
         unsupported.append("DOCKER_HOST=\(value)")
       }
@@ -114,6 +131,8 @@ public enum DockerEndpointResolution {
       case .unixSocket(let path):
         candidates.append(
           DockerEndpointCandidate(socketPath: path, origin: "Docker context \(activeContext.name)"))
+      case .ssh:
+        break
       case .unsupported(let value):
         unsupported.append("context \(activeContext.name): \(value)")
       }

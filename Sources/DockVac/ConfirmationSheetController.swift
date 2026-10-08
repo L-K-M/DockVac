@@ -1,11 +1,14 @@
 import AppKit
 import DockVacCore
+import DockVacDocker
 
 /// Shows exactly what will be removed, in order, and demands explicit confirmation.
 final class ConfirmationSheetController: NSWindowController, NSTableViewDataSource,
   NSTableViewDelegate
 {
   private let plan: CleanupPlan
+  private let connection: DockerConnection
+  private let equivalentCommands: String
   private let onDecision: (Bool) -> Void
   private let table = NSTableView()
   private let commandsContainer = NSStackView()
@@ -16,8 +19,13 @@ final class ConfirmationSheetController: NSWindowController, NSTableViewDataSour
   private let removeButton = NSButton(title: "Remove", target: nil, action: nil)
   private var decided = false
 
-  init(plan: CleanupPlan, onDecision: @escaping (Bool) -> Void) {
+  init(
+    plan: CleanupPlan, connection: DockerConnection, equivalentCommands: String,
+    onDecision: @escaping (Bool) -> Void
+  ) {
     self.plan = plan
+    self.connection = connection
+    self.equivalentCommands = equivalentCommands
     self.onDecision = onDecision
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 700, height: 600),
@@ -69,7 +77,10 @@ final class ConfirmationSheetController: NSWindowController, NSTableViewDataSour
       "Frees about \(ByteFormat.string(plan.estimatedReclaimableBytes)) (estimate). \(plan.summary).",
       size: 12, weight: .semibold)
 
-    var sections: [NSView] = [headline, intro, scroll, totals]
+    let destination = Theme.wrappingLabel(
+      "Target: \(connection.summary)\n\(connection.endpoint.address)", size: 12, color: .labelColor)
+    destination.preferredMaxLayoutWidth = 660
+    var sections: [NSView] = [headline, destination, intro, scroll, totals]
 
     if !plan.exclusions.isEmpty {
       let text = plan.exclusions.map { "• \($0.title): \($0.reason)" }.joined(separator: "\n")
@@ -97,14 +108,14 @@ final class ConfirmationSheetController: NSWindowController, NSTableViewDataSour
       textView.isEditable = false
       textView.isRichText = false
       textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-      textView.string = plan.cliScript
+      textView.string = equivalentCommands
       textView.textContainerInset = NSSize(width: 6, height: 6)
     }
     commandsScroll.borderType = .bezelBorder
     commandsScroll.translatesAutoresizingMaskIntoConstraints = false
     commandsScroll.heightAnchor.constraint(equalToConstant: 110).isActive = true
     let explanation = Theme.wrappingLabel(
-      "These docker commands do the same thing. DockVac talks to the Docker Engine API directly, without force flags.",
+      "These commands target the connection shown above. DockVac uses the Engine API without force flags.",
       size: 11, color: .secondaryLabelColor)
     explanation.isSelectable = false
     explanation.preferredMaxLayoutWidth = 660
@@ -201,7 +212,7 @@ final class ConfirmationSheetController: NSWindowController, NSTableViewDataSour
 
   @objc private func copyCommands() {
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(plan.cliScript, forType: .string)
+    NSPasteboard.general.setString(equivalentCommands, forType: .string)
   }
 
   @objc private func checkboxChanged() {

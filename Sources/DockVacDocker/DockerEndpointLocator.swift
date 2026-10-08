@@ -17,13 +17,38 @@ public struct DockerConnection: Hashable, Sendable {
     DockerEngineClient(endpoint: endpoint)
   }
 
+  /// Copyable equivalents must name the same daemon, independent of the local CLI's
+  /// active Docker context.
+  public func equivalentScript(for plan: CleanupPlan) -> String {
+    switch endpoint.transport {
+    case .unixSocket(let path):
+      let quotedURI = "'unix://" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+      return plan.operations.map {
+        $0.cliEquivalent.replacingOccurrences(
+          of: "docker ", with: "docker --host \(quotedURI) ", options: .anchored)
+      }.joined(separator: "\n")
+    case .ssh(let host):
+      return SSHHTTPClient(host: host, idleTimeout: 900, executable: SSHHTTPClient.executable)
+        .equivalentScript(for: plan)
+    }
+  }
+
   /// One line for the UI, e.g. "Docker Desktop · Docker Engine 29.3.1".
   public var summary: String {
     var parts = [endpoint.origin]
+    if case .ssh = endpoint.transport {
+      parts.append(endpoint.address)
+    }
     let engine = version.platformName?.isEmpty == false ? version.platformName! : "Docker Engine"
     parts.append("\(engine) \(version.version)")
     return parts.joined(separator: " · ")
   }
+}
+
+public enum DockerConnectionTarget: Hashable, Sendable {
+  case automatic
+  case local
+  case ssh(DockerSSHHost)
 }
 
 /// Finds the local Docker daemon by checking the environment, the active Docker context,
@@ -54,7 +79,29 @@ public struct DockerEndpointLocator: Sendable {
   }
 
   /// Connects to the first candidate that answers `/_ping`.
-  public func connect() async throws -> DockerConnection {
+  public func connect(to target: DockerConnectionTarget = .automatic) async throws
+    -> DockerConnection
+  {
+    switch target {
+    case .ssh(let host):
+      return try await probe(DockerEndpoint(sshHost: host))
+    case .automatic:
+      if let configured = DockerEndpointResolution.configuredHost(
+        environment: environment, activeContext: activeContext())
+      {
+        switch configured.host {
+        case .ssh(let host):
+          return try await probe(DockerEndpoint(sshHost: host, origin: configured.origin))
+        case .unsupported(let value) where value.hasPrefix("ssh:"):
+          throw DockerSSHHostError.invalidAddress
+        default:
+          break
+        }
+      }
+    case .local:
+      break
+    }
+
     let (candidates, unsupported) = candidates()
     var attempts: [String] = []
     let fileManager = FileManager.default
@@ -66,11 +113,8 @@ public struct DockerEndpointLocator: Sendable {
         continue
       }
       let endpoint = DockerEndpoint(socketPath: candidate.socketPath, origin: candidate.origin)
-      let client = DockerEngineClient(endpoint: endpoint, idleTimeout: probeTimeout)
       do {
-        let ping = try await client.ping()
-        let version = try await client.version()
-        return DockerConnection(endpoint: endpoint, version: version, ping: ping)
+        return try await probe(endpoint)
       } catch is CancellationError {
         throw CancellationError()
       } catch {
@@ -79,6 +123,13 @@ public struct DockerEndpointLocator: Sendable {
       }
     }
     throw DockerEngineError.daemonNotFound(attempts: attempts, unsupported: unsupported)
+  }
+
+  private func probe(_ endpoint: DockerEndpoint) async throws -> DockerConnection {
+    let client = DockerEngineClient(endpoint: endpoint, idleTimeout: probeTimeout)
+    let ping = try await client.ping()
+    let version = try await client.version()
+    return DockerConnection(endpoint: endpoint, version: version, ping: ping)
   }
 
   // MARK: - Docker contexts

@@ -44,7 +44,9 @@ final class LiveDockerTests: XCTestCase {
     XCTAssertFalse(connection.version.apiVersion.isEmpty)
     XCTAssertEqual(connection.ping.apiVersion, connection.version.apiVersion)
     XCTAssertTrue(connection.summary.contains(connection.version.version))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: connection.endpoint.socketPath))
+    if case .unixSocket(let path) = connection.endpoint.transport {
+      XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+    }
   }
 
   func testScannerReportsStagesAndFindsCreatedResources() async throws {

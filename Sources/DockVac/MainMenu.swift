@@ -8,6 +8,7 @@ enum MainMenu {
     let mainMenu = NSMenu()
     mainMenu.addItem(applicationMenu())
     mainMenu.addItem(editMenu())
+    mainMenu.addItem(connectionMenu(controller))
     mainMenu.addItem(viewMenu(controller))
     mainMenu.addItem(cleanupMenu(controller))
     let windowItem = windowMenu()
@@ -71,6 +72,17 @@ enum MainMenu {
       withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)),
       keyEquivalent: "f")
     fullScreen.keyEquivalentModifierMask = [.command, .control]
+    item.submenu = menu
+    return item
+  }
+
+  private static func connectionMenu(_ controller: AppController) -> NSMenuItem {
+    let item = NSMenuItem()
+    let menu = NSMenu(title: "Connection")
+    menu.addItem(
+      targeted("Connect via SSH…", #selector(AppController.connectViaSSH(_:)), "k", controller))
+    menu.addItem(
+      targeted("Use Local Docker", #selector(AppController.useLocalDocker(_:)), "", controller))
     item.submenu = menu
     return item
   }
