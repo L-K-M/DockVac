@@ -54,7 +54,9 @@ final class ScanningView: NSView {
     fatalError("init(coder:) is not supported")
   }
 
-  func apply(phase: AppPhase, connection: DockerConnection?, startedAt: Date?) {
+  func apply(
+    phase: AppPhase, connection: DockerConnection?, target: DockerConnectionTarget, startedAt: Date?
+  ) {
     connectionLabel.stringValue = connection?.summary ?? "Looking for Docker…"
     let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
     let elapsedText = elapsed >= 1 ? "\(Int(elapsed))s elapsed" : nil
@@ -62,8 +64,16 @@ final class ScanningView: NSView {
     switch phase {
     case .connecting:
       headline.stringValue = "Connecting…"
-      detail.stringValue =
-        "Checking DOCKER_HOST, the active Docker context, and the usual socket locations."
+      switch target {
+      case .ssh(let host):
+        connectionLabel.stringValue = host.address
+        detail.stringValue = "Connecting to the server with your SSH configuration."
+      case .local:
+        detail.stringValue = "Checking local Docker sockets."
+      case .automatic:
+        detail.stringValue =
+          "Checking DOCKER_HOST, the active Docker context, and the usual socket locations."
+      }
       ring.fraction = nil
     case .scanning(let progress):
       headline.stringValue = "Scanning…"

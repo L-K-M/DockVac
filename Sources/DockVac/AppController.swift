@@ -12,6 +12,8 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   private(set) var phase: AppPhase = .idle
   private(set) var report: UsageReport = .empty
   private(set) var connection: DockerConnection?
+  private var scanningConnection: DockerConnection?
+  private var sshConnectionSheet: SSHConnectionSheetController?
   private(set) var focus: DockerResourceKind?
   private(set) var filter: ReportFilter = .everything
   private(set) var selectedItem: DockerResourceID?
@@ -28,7 +30,13 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
 
   /// While the confirmation or progress sheet is up, the plan on screen must stay valid, so
   /// every other action is refused.
-  var isSheetPresented: Bool { confirmationSheet != nil || progressSheet != nil }
+  var isSheetPresented: Bool {
+    confirmationSheet != nil || progressSheet != nil || sshConnectionSheet != nil
+  }
+
+  private var displayedConnection: DockerConnection? {
+    phase.isScanning ? scanningConnection : connection
+  }
 
   override init() {
     super.init()
@@ -80,6 +88,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   @objc func rescan(_ sender: Any?) {
     guard !service.isCleaning, !isSheetPresented else { return }
     phase = .connecting
+    scanningConnection = nil
     scanStartedAt = Date()
     startScanTimer()
     service.scan()
@@ -99,7 +108,8 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
       Task { @MainActor [weak self] in
         guard let self, self.phase.isScanning else { return }
         self.windowController.scanningView.apply(
-          phase: self.phase, connection: self.connection, startedAt: self.scanStartedAt)
+          phase: self.phase, connection: self.displayedConnection, target: self.service.target,
+          startedAt: self.scanStartedAt)
       }
     }
   }
@@ -110,7 +120,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   func serviceDidConnect(_ connection: DockerConnection) {
-    self.connection = connection
+    scanningConnection = connection
     phase = .scanning(nil)
     render()
   }
@@ -125,6 +135,14 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
     stopScanTimer()
     switch result {
     case .success(let usage):
+      // Resource IDs are daemon-local. Never carry a selection to another server.
+      if connection?.endpoint != service.connection?.endpoint {
+        basket.removeAll()
+        selectedItem = nil
+        selectedCategory = nil
+        focus = nil
+      }
+      connection = service.connection
       report = UsageAnalyzer.analyze(usage)
       basket = basket.filter { report.item(for: $0) != nil }
       if let selectedItem, report.item(for: selectedItem) == nil {
@@ -149,6 +167,52 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
       }
     }
     render()
+  }
+
+  // MARK: - Connections
+
+  @objc func connectViaSSH(_ sender: Any?) {
+    guard !isSheetPresented, !service.isCleaning, let window = windowController.window else {
+      return
+    }
+    cancelScan()
+    let host: DockerSSHHost?
+    if case .ssh(let selected) = service.target {
+      host = selected
+    } else if let connection, case .ssh(let connected) = connection.endpoint.transport {
+      host = connected
+    } else {
+      host = nil
+    }
+    let sheet = SSHConnectionSheetController(host: host) { [weak self] host in
+      guard let self else { return }
+      self.sshConnectionSheet = nil
+      if let host {
+        self.selectConnection(.ssh(host))
+      } else {
+        self.render()
+      }
+    }
+    sshConnectionSheet = sheet
+    if let sheetWindow = sheet.window { window.beginSheet(sheetWindow) { _ in } }
+    render()
+  }
+
+  @objc func useLocalDocker(_ sender: Any?) {
+    guard !isSheetPresented, !service.isCleaning else { return }
+    selectConnection(.local)
+  }
+
+  private func selectConnection(_ target: DockerConnectionTarget) {
+    service.selectTarget(target)
+    connection = nil
+    scanningConnection = nil
+    report = .empty
+    basket.removeAll()
+    selectedItem = nil
+    selectedCategory = nil
+    focus = nil
+    rescan(nil)
   }
 
   // MARK: - ReportActions
@@ -235,11 +299,14 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
 
   func reviewAndRemove() {
     guard phase == .report, !service.isCleaning, !isSheetPresented,
-      let window = windowController.window
+      let window = windowController.window, let connection
     else { return }
     let plan = self.plan
     guard !plan.isEmpty || !plan.exclusions.isEmpty else { return }
-    let sheet = ConfirmationSheetController(plan: plan) { [weak self] confirmed in
+    let sheet = ConfirmationSheetController(
+      plan: plan, connection: connection, equivalentCommands: service.equivalentCommands(for: plan)
+    ) {
+      [weak self] confirmed in
       guard let self else { return }
       self.confirmationSheet = nil
       if confirmed, !plan.isEmpty {
@@ -331,6 +398,8 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
     guard let action = menuItem.action, !isSheetPresented else { return false }
     let inReport = phase == .report && !service.isCleaning
     switch action {
+    case #selector(connectViaSSH(_:)), #selector(useLocalDocker(_:)):
+      return !service.isCleaning
     case #selector(rescan(_:)):
       return !phase.isScanning && !service.isCleaning
     case #selector(goBack(_:)):
@@ -413,7 +482,8 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
       windowController.show(windowController.messageView)
     case .connecting, .scanning:
       windowController.scanningView.apply(
-        phase: phase, connection: connection, startedAt: scanStartedAt)
+        phase: phase, connection: displayedConnection, target: service.target,
+        startedAt: scanStartedAt)
       windowController.show(windowController.scanningView)
     case .report:
       windowController.reportView.apply(viewState)
@@ -430,7 +500,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
         action: "Try Again")
       windowController.show(windowController.messageView)
     }
-    windowController.updateChrome(connection: connection, filter: filter, phase: phase)
+    windowController.updateChrome(connection: displayedConnection, filter: filter, phase: phase)
   }
 
   /// The first line is the headline explanation; the rest are the technical details.

@@ -1,15 +1,32 @@
 import DockVacCore
 import Foundation
 
-/// A Docker daemon socket DockVac talks to.
+/// A Docker daemon and the transport used to reach it.
 public struct DockerEndpoint: Hashable, Sendable {
-  public let socketPath: String
+  public enum Transport: Hashable, Sendable {
+    case unixSocket(path: String)
+    case ssh(DockerSSHHost)
+  }
+
+  public let transport: Transport
   /// Where the path came from, e.g. "Docker Desktop" or "DOCKER_HOST".
   public let origin: String
 
   public init(socketPath: String, origin: String) {
-    self.socketPath = socketPath
+    self.transport = .unixSocket(path: socketPath)
     self.origin = origin
+  }
+
+  public init(sshHost: DockerSSHHost, origin: String = "SSH") {
+    self.transport = .ssh(sshHost)
+    self.origin = origin
+  }
+
+  public var address: String {
+    switch transport {
+    case .unixSocket(let path): return path
+    case .ssh(let host): return host.address
+    }
   }
 }
 
@@ -29,11 +46,17 @@ public struct DockerPing: Hashable, Sendable {
 /// non-forcing: the daemon refuses anything that is still in use.
 public struct DockerEngineClient: Sendable {
   public let endpoint: DockerEndpoint
-  private let http: UnixSocketHTTPClient
+  private let idleTimeout: TimeInterval
+  private let sshExecutable: URL
 
   public init(endpoint: DockerEndpoint, idleTimeout: TimeInterval = 900) {
+    self.init(endpoint: endpoint, idleTimeout: idleTimeout, sshExecutable: SSHHTTPClient.executable)
+  }
+
+  init(endpoint: DockerEndpoint, idleTimeout: TimeInterval, sshExecutable: URL) {
     self.endpoint = endpoint
-    self.http = UnixSocketHTTPClient(socketPath: endpoint.socketPath, idleTimeout: idleTimeout)
+    self.idleTimeout = idleTimeout
+    self.sshExecutable = sshExecutable
   }
 
   // MARK: - Reads
@@ -148,7 +171,16 @@ public struct DockerEngineClient: Sendable {
   }
 
   private func perform(_ request: HTTPRequest) async throws -> HTTPResponse {
-    let response = try await http.send(request)
+    let response: HTTPResponse
+    switch endpoint.transport {
+    case .unixSocket(let path):
+      response = try await UnixSocketHTTPClient(socketPath: path, idleTimeout: idleTimeout).send(
+        request)
+    case .ssh(let host):
+      response = try await SSHHTTPClient(
+        host: host, idleTimeout: idleTimeout, executable: sshExecutable
+      ).send(request)
+    }
     guard response.statusCode < 400 else {
       let message =
         DockerEngineDecoder.decodeErrorMessage(response.body)

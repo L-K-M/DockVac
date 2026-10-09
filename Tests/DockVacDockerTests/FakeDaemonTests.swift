@@ -102,9 +102,101 @@ final class FakeDaemonTests: XCTestCase {
     return try await locator.connect()
   }
 
+  private func sshClient(mode: String = "bridge") throws -> DockerEngineClient {
+    DockerEngineClient(
+      endpoint: DockerEndpoint(sshHost: try DockerSSHHost("ssh://\(mode)\(socketPath)")),
+      idleTimeout: 10, sshExecutable: SSHHTTPClientTests.fakeExecutable)
+  }
+
+  func testSSHScanAnalyseAndCleanupFlow() async throws {
+    let client = try sshClient()
+    let version = try await client.version()
+    XCTAssertEqual(version.version, "29.3.1")
+    let usage = try await DockerScanner(client: client).scan { _ in }
+    let report = UsageAnalyzer.analyze(usage)
+    XCTAssertEqual(report.itemCount, 27)
+    let plan = CleanupPlan.make(selecting: report.safeSuggestionIDs, from: report)
+    let state = await CleanupRunner(client: client).run(plan) { _ in }
+    XCTAssertEqual(state.succeededCount, 6, "\(state.statuses)")
+    XCTAssertEqual(state.failedCount, 0)
+    let requests = recordedRequests()
+    XCTAssertTrue(requests.contains { $0.hasPrefix("DELETE /images/") && $0.contains("force=0") })
+    XCTAssertEqual(requests.filter { $0.hasPrefix("POST /build/prune?filters=") }.count, 5)
+    XCTAssertFalse(requests.contains { $0.contains("force=1") || $0.contains("/stop") })
+  }
+
+  func testSSHStopFinishesInflightRemovalAndSkipsTheRest() async throws {
+    let client = try sshClient(mode: "slow-bridge")
+    let report = UsageAnalyzer.analyze(try await client.diskUsage())
+    let plan = CleanupPlan.make(selecting: report.safeSuggestionIDs, from: report)
+    let marker = socketPath + ".deleting"
+    defer { try? FileManager.default.removeItem(atPath: marker) }
+    let task = Task { await CleanupRunner(client: client).run(plan) { _ in } }
+    let deadline = Date().addingTimeInterval(5)
+    while !FileManager.default.fileExists(atPath: marker), Date() < deadline {
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    task.cancel()
+    let state = await task.value
+    XCTAssertEqual(state.succeededCount, 1, "\(state.statuses)")
+    XCTAssertEqual(state.failedCount, 0)
+    XCTAssertEqual(state.skippedCount, plan.operations.count - 1)
+    XCTAssertEqual(recordedRequests().filter { $0.hasPrefix("DELETE ") }.count, 1)
+  }
+
+  func testSSHPrerequisiteFailsAndDependentsAreSkipped() async throws {
+    let client = try sshClient()
+    let report = UsageAnalyzer.analyze(try await client.diskUsage())
+    let volume = DockerResourceID(kind: .localVolumes, rawValue: "dv-stopped-ref")
+    let container = try XCTUnwrap(report.item(for: volume)?.removability.prerequisites.first)
+    let plan = CleanupPlan.make(selecting: [volume, container], from: report)
+    let state = await CleanupRunner(client: client).run(plan) { _ in }
+    XCTAssertEqual(state.failedCount, 1)
+    XCTAssertEqual(state.skippedCount, 1)
+    XCTAssertFalse(recordedRequests().contains { $0.hasPrefix("DELETE /volumes/") })
+  }
+
+  func testMalformedConfiguredSSHNeverFallsBackToLocalDocker() async throws {
+    for scheme in ["ssh", "SSH", "sSh"] {
+      let locator = DockerEndpointLocator(
+        environment: ["DOCKER_HOST": "\(scheme)://user:password@server"],
+        homeDirectory: NSTemporaryDirectory(), probeTimeout: 1)
+      do {
+        _ = try await locator.connect()
+        XCTFail("expected invalid SSH address")
+      } catch {
+        XCTAssertTrue(error is DockerSSHHostError, "\(error)")
+      }
+    }
+    XCTAssertTrue(recordedRequests().isEmpty)
+  }
+
+  func testFailedConfiguredSSHNeverFallsBackToAReachableLocalDaemon() async throws {
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "dockvac-home-\(UUID().uuidString)")
+    let localSocket = home.appendingPathComponent(".docker/run/docker.sock")
+    try FileManager.default.createDirectory(
+      at: localSocket.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      atPath: localSocket.path, withDestinationPath: socketPath)
+    defer { try? FileManager.default.removeItem(at: home) }
+    for scheme in ["ssh", "SSH", "sSh"] {
+      let locator = DockerEndpointLocator(
+        environment: ["DOCKER_HOST": "\(scheme)://127.0.0.1:1"], homeDirectory: home.path,
+        probeTimeout: 1)
+      do {
+        _ = try await locator.connect()
+        XCTFail("expected SSH failure")
+      } catch let error as DockerEngineError {
+        guard case .sshUnavailable = error else { return XCTFail("unexpected \(error)") }
+      }
+    }
+    XCTAssertTrue(recordedRequests().isEmpty, "A failed remote request must not reach local Docker")
+  }
+
   func testLocatorUsesDockerHostAndReadsVersion() async throws {
     let connection = try await connect()
-    XCTAssertEqual(connection.endpoint.socketPath, socketPath)
+    XCTAssertEqual(connection.endpoint.transport, .unixSocket(path: socketPath))
     XCTAssertEqual(connection.endpoint.origin, "DOCKER_HOST")
     XCTAssertEqual(connection.version.version, "29.3.1")
     XCTAssertEqual(connection.ping.apiVersion, "1.54")

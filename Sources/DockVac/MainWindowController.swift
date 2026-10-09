@@ -17,6 +17,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
   private enum ItemID {
     static let back = NSToolbarItem.Identifier("back")
     static let rescan = NSToolbarItem.Identifier("rescan")
+    static let connection = NSToolbarItem.Identifier("connection")
     static let filter = NSToolbarItem.Identifier("filter")
     static let review = NSToolbarItem.Identifier("review")
   }
@@ -87,7 +88,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
   // MARK: - Toolbar
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [ItemID.back, ItemID.rescan, .flexibleSpace, ItemID.filter, .flexibleSpace, ItemID.review]
+    [
+      ItemID.back, ItemID.rescan, ItemID.connection, .flexibleSpace, ItemID.filter, .flexibleSpace,
+      ItemID.review,
+    ]
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -121,6 +125,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
       item.label = "Show"
       item.paletteLabel = "Show"
       item.view = filterControl
+    case ItemID.connection:
+      item.label = "Connect via SSH"
+      item.toolTip = "Connect to Docker on a server via SSH (⌘K)"
+      item.image = Theme.symbol("network", pointSize: 14, weight: .medium)
+      item.target = self
+      item.action = #selector(connectionPressed)
+      item.isBordered = true
     case ItemID.review:
       item.label = "Review & Remove"
       item.paletteLabel = "Review & Remove"
@@ -142,6 +153,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
       return controller.phase == .report && controller.focus != nil
     case ItemID.rescan:
       return !controller.phase.isScanning && !controller.isCleaning
+    case ItemID.connection:
+      return !controller.isCleaning
     case ItemID.review:
       return controller.phase == .report && !controller.basket.isEmpty && !controller.isCleaning
     default:
@@ -155,6 +168,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSToolb
 
   @objc private func rescanPressed() {
     controller?.rescan(nil)
+  }
+
+  @objc private func connectionPressed() {
+    controller?.connectViaSSH(nil)
   }
 
   @objc private func reviewPressed() {

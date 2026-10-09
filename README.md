@@ -28,7 +28,7 @@ and confirm:
 
 ## What it does
 
-- **Scans** the local Docker daemon over its unix socket using the Engine API, so sizes are
+- **Scans** local Docker over its unix socket or a server over SSH using the Engine API, so sizes are
   exact bytes rather than the rounded figures the CLI prints.
 - **Explains** every item: whether it is dangling, unused, or in use, which containers use
   it, whether an image can be pulled again, and roughly how much removing it frees.
@@ -48,8 +48,10 @@ and confirm:
 
 - macOS 13 or newer
 - Docker Desktop, OrbStack, Colima, Rancher Desktop, or another daemon that exposes a
-  local unix socket (`DOCKER_HOST` and Docker contexts are honoured; `tcp://` and `ssh://`
-  hosts are not supported)
+  unix socket. `DOCKER_HOST` and Docker contexts support `unix://` and `ssh://` endpoints;
+  `tcp://` is not supported.
+- For SSH: key/agent authentication, a verified SSH host key, and Docker's CLI on the
+  server's PATH. Your remote user must have permission to access Docker's socket.
 - To build: Swift 6.3.3 and the Xcode command-line tools
 
 ## Build
@@ -78,15 +80,34 @@ Use `scripts/build.sh --run` to build and launch without installing.
 4. Click **Review & Remove…**, read the list, tick the confirmation box, and remove.
 5. DockVac rescans when the cleanup sheet closes so you see the real result.
 
+### Connect to a server
+
+Choose **Connection › Connect via SSH…** (⌘K), or click the network toolbar button. Enter
+`ssh://user@server`, `ssh://user@server:2222`, or an alias from `~/.ssh/config`.
+DockVac uses your SSH configuration, keys, agent, and jump hosts. It does not prompt for
+passwords or key passphrases. Connect once in Terminal to verify the server's host key;
+load passphrase-protected keys into your SSH agent before connecting in DockVac.
+
+The remote socket defaults to `/var/run/docker.sock`. For rootless Docker or a custom
+socket, append its absolute path, for example:
+`ssh://user@server/run/user/1000/docker.sock`. DockVac pins this socket rather than using
+the remote CLI's active Docker context. Docker need not be installed locally.
+
+The window and removal confirmation show the server. Changing servers clears the cleanup
+list; an SSH failure never falls back to local Docker. **Connection › Use Local Docker**
+switches back. Rescans and post-cleanup refreshes keep the selected target for this session.
+
 ## Architecture
 
 - `DockVacCore` is Foundation-only: validated models, Engine API decoding, the usage
   analysis that decides what is removable and why, the squarified treemap layout, and
   cleanup plans with their CLI equivalents. `swift test` covers it on Linux and macOS with
   responses captured from a real daemon.
-- `DockVacDocker` is the driver: a unix-socket HTTP client with cancellation and timeouts,
+- `DockVacDocker` is the driver: unix-socket and SSH HTTP clients with cancellation and timeouts,
   a typed Engine API client, daemon discovery, the staged scanner, and the cleanup runner.
   Its integration tests run against a live daemon when one is reachable and skip otherwise.
+  SSH transport tests use a subprocess bridge to the fixture-backed daemon, including
+  cancellation, malformed responses, partial failure, and non-forcing cleanup.
 - `DockVac` is the AppKit app. It talks to a single application service and never touches
   sockets, processes, or the file system itself.
 
