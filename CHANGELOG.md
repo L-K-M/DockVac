@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Clean up everything Docker can make again in one action. The safe level takes untagged
+  image leftovers and unused build cache; the thorough level also takes unused images whose
+  every tag names a repository one of their digests came from, which a reachable registry
+  can serve again. Neither level selects a container or a volume, an image a container
+  still uses is left out rather than removing that container first, and both levels go
+  through the usual confirmation.
+
 - Connect to Docker servers over SSH using your keys, agent, and SSH configuration.
   Support SSH Docker contexts, custom ports, and rootless sockets. Show the target before
   removal and clear selections when switching servers.
