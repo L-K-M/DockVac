@@ -38,10 +38,10 @@ and confirm:
 - **Collects** the items you tick into a cleanup list. Adding an image that a stopped
   container still uses also adds that container, and tells you so.
 - **Cleans up automatically** on request: **Clean Up** selects everything Docker can make
-  again and goes straight to the confirmation sheet. The safe level takes untagged image
-  leftovers and unused build cache; the thorough level also takes unused images whose
-  every tag names a repository one of their digests came from, so `docker pull` can fetch
-  them back while that registry is reachable. An image built here, or tagged in a
+  again and goes straight to the confirmation sheet. **Rebuildable** takes untagged image
+  leftovers and unused build cache; **Rebuildable and re-pullable** also takes unused
+  images whose every tag names a repository one of their digests came from, so `docker
+  pull` can fetch them back while that registry is reachable. An image built here, or tagged in a
   repository no digest covers, stays at both levels. Neither level touches a container or a volume, so no container leaves Docker
   Desktop's list and nothing written inside one is lost.
 - **Confirms** with a sheet that lists each operation in the order it runs, its estimated

@@ -23,7 +23,9 @@ public enum AutomaticCleanupLevel: String, CaseIterable, Hashable, Sendable, Ide
     }
   }
 
-  /// Short label for a button or a menu item.
+  /// Label for a menu item that performs the cleanup, so it carries the verb.
+  /// DockVac's Cleanup menu and its pull-down use this; Slingshot's menu lists
+  /// `displayName` instead, because its own button already says Clean Up.
   public var menuTitle: String {
     switch self {
     case .safe: return "Clean Up Rebuildable Space"
