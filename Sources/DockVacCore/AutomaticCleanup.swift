@@ -31,14 +31,6 @@ public enum AutomaticCleanupLevel: String, CaseIterable, Hashable, Sendable, Ide
     }
   }
 
-  /// One line describing what the level removes.
-  public var summary: String {
-    switch self {
-    case .safe: return "Untagged images and unused build cache"
-    case .thorough: return "Also unused images a registry can serve again"
-    }
-  }
-
   /// What the level removes and what it deliberately keeps, for the confirmation UI.
   public var explanation: String {
     switch self {
@@ -49,9 +41,11 @@ public enum AutomaticCleanupLevel: String, CaseIterable, Hashable, Sendable, Ide
         """
     case .thorough:
       return """
-        Also removes images no container uses that carry a registry digest, so docker pull \
-        fetches the same bytes back. This costs download time. Images that only ever existed \
-        locally stay, because nothing could fetch them again.
+        Also removes images no container uses whose every tag comes from a registry, so \
+        docker pull fetches the same bytes back, as long as you can still reach that \
+        registry and it still serves that digest. Images built locally stay, and so does \
+        an image carrying a tag no registry knows, because a pull would not bring that \
+        tag back.
         """
     }
   }
@@ -63,21 +57,36 @@ public enum AutomaticCleanupLevel: String, CaseIterable, Hashable, Sendable, Ide
     case .safe:
       return image.isDangling
     case .thorough:
-      // A digest means a registry served exactly these bytes and can serve them again.
-      // An image with tags but no digest was built here, and its build context may be gone.
-      return image.isDangling || !image.repoDigests.isEmpty
+      if image.isDangling {
+        return true
+      }
+      // A digest records that a registry served exactly these bytes, so a pull can ask for
+      // them again. Removing an image removes every one of its tags with it, though, and a
+      // tag in a repository no digest covers was made here: no pull would bring it back.
+      guard !image.repoDigests.isEmpty else {
+        return false
+      }
+      let digestRepositories = Set(image.repoDigests.map(DockerImage.repository(of:)))
+      return image.repoTags.allSatisfy {
+        digestRepositories.contains(DockerImage.repository(of: $0))
+      }
     }
   }
 }
 
 extension UsageReport {
-  /// The resources an automatic cleanup at `level` removes, images before build cache.
+  /// The resources an automatic cleanup at `level` removes.
   ///
   /// Only images and build cache records qualify, so no container leaves Docker Desktop's
   /// list and no volume contents are lost. Anything Docker would refuse without `force`,
   /// and anything that would need another resource removed first, is left out as well:
   /// an image used by a stopped container stays, rather than dragging that container into
   /// the plan. A plan built from these IDs therefore has no prerequisites and no exclusions.
+  ///
+  /// That guarantee describes the report these IDs came from. Plan them with
+  /// `CleanupPlan.make`, which orders the operations and drops an item whose prerequisites
+  /// are absent. Expanding them with `selectionClosure` against a later snapshot would
+  /// instead pull in a container that appeared in between.
   public func automaticCleanupIDs(_ level: AutomaticCleanupLevel) -> [DockerResourceID] {
     // One pass into a set: `item(for:)` scans a category, and a busy daemon has thousands
     // of build cache records to check.

@@ -138,7 +138,7 @@ final class BasketBarView: NSView {
     }
     automaticButton.isEnabled = plans.values.contains { !$0.isEmpty }
     automaticButton.toolTip =
-      "Remove everything Docker can make again. Containers and volumes are never touched."
+      "Remove everything Docker can make again. Containers and volumes are never selected."
   }
 
   @objc private func automaticPressed(_ sender: NSMenuItem) {

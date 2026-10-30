@@ -10,7 +10,12 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   private let service = DockerService()
 
   private(set) var phase: AppPhase = .idle
-  private(set) var report: UsageReport = .empty
+  private(set) var report: UsageReport = .empty {
+    didSet { automaticPlans = Self.plans(for: report) }
+  }
+  /// Rebuilt when the report changes rather than per render: planning a level walks
+  /// every reclaimable resource, and `render()` runs on every click.
+  private(set) var automaticPlans: [AutomaticCleanupLevel: CleanupPlan] = [:]
   private(set) var connection: DockerConnection?
   private var scanningConnection: DockerConnection?
   private var sshConnectionSheet: SSHConnectionSheetController?
@@ -69,8 +74,9 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
     CleanupPlan.make(selecting: basket, from: report)
   }
 
-  /// The plan each automatic cleanup level would run against the current report.
-  var automaticPlans: [AutomaticCleanupLevel: CleanupPlan] {
+  private static func plans(for report: UsageReport)
+    -> [AutomaticCleanupLevel: CleanupPlan]
+  {
     Dictionary(
       uniqueKeysWithValues: AutomaticCleanupLevel.allCases.map {
         ($0, CleanupPlan.make(selecting: report.automaticCleanupIDs($0), from: report))
@@ -314,7 +320,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   /// alone: what the user confirms is exactly the reproducible set, never a volume they
   /// ticked earlier, and their own selection survives if they cancel.
   func runAutomaticCleanup(_ level: AutomaticCleanupLevel) {
-    confirm(CleanupPlan.make(selecting: report.automaticCleanupIDs(level), from: report))
+    confirm(automaticPlans[level] ?? .empty)
   }
 
   private func confirm(_ plan: CleanupPlan) {
@@ -447,11 +453,11 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
         ? "Remove Selected Item from Cleanup" : "Add Selected Item to Cleanup"
       return !item.removability.isBlocked
     case #selector(addSafeItems(_:)):
-      return inReport && !report.automaticCleanupIDs(.safe).isEmpty
+      return inReport && automaticPlans[.safe]?.isEmpty == false
     case #selector(automaticCleanupSafe(_:)):
-      return inReport && !report.automaticCleanupIDs(.safe).isEmpty
+      return inReport && automaticPlans[.safe]?.isEmpty == false
     case #selector(automaticCleanupThorough(_:)):
-      return inReport && !report.automaticCleanupIDs(.thorough).isEmpty
+      return inReport && automaticPlans[.thorough]?.isEmpty == false
     case #selector(clearBasketAction(_:)):
       return inReport && !basket.isEmpty
     case #selector(reviewAndRemoveAction(_:)):

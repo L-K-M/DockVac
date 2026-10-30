@@ -71,6 +71,37 @@ final class AutomaticCleanupTests: XCTestCase {
       "but the digest means it can be pulled again")
   }
 
+  func testThoroughKeepsAnImageCarryingATagNoRegistryKnows() throws {
+    // Pulled from a registry, then tagged again for a local experiment. Removing the image
+    // takes that second tag with it, and no pull would bring the tag back.
+    let forked = DockerImage(
+      id: "sha256:forked", repoTags: ["alpine:3.20", "my-experiment:wip"],
+      repoDigests: ["alpine@sha256:abc"], created: nil, sizeBytes: 7_000, sharedSizeBytes: 0,
+      containerCount: 0)
+    let report = UsageAnalyzer.analyze(DockerDiskUsage(images: [forked]))
+
+    XCTAssertTrue(
+      try XCTUnwrap(report.item(for: forked.resourceID)).removability.isRemovableNow,
+      "it can still be removed on request, so only its unreproducible tag keeps it out")
+    for level in AutomaticCleanupLevel.allCases {
+      XCTAssertFalse(
+        report.automaticCleanupIDs(level).contains(forked.resourceID),
+        "\(level.rawValue) would destroy a tag no pull restores")
+    }
+  }
+
+  func testThoroughTakesEveryTagOfOneRegistryRepository() {
+    let multi = DockerImage(
+      id: "sha256:multi", repoTags: ["app:1.0", "app:latest"],
+      repoDigests: ["app@sha256:abc"], created: nil, sizeBytes: 5_000, sharedSizeBytes: 0,
+      containerCount: 0)
+    let report = UsageAnalyzer.analyze(DockerDiskUsage(images: [multi]))
+
+    XCTAssertEqual(
+      report.automaticCleanupIDs(.thorough), [multi.resourceID],
+      "every tag names the same repository the digest does, so a pull restores all of them")
+  }
+
   // MARK: - What no level may ever do
 
   func testNoLevelRemovesAContainerOrAVolume() throws {
