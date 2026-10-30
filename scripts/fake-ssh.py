@@ -36,15 +36,34 @@ def main():
                     data = os.read(0, 65536)
                     if not data:
                         selector.unregister(0)
-                        bridge.shutdown(socket.SHUT_WR)
+                        # Best-effort half-close: the daemon may already have hung up,
+                        # which BSD reports as ENOTCONN while Linux stays quiet. Either
+                        # way there is nothing left to signal, so keep draining replies.
+                        try:
+                            bridge.shutdown(socket.SHUT_WR)
+                        except OSError:
+                            pass
                         continue
                     if mode == "slow-bridge" and not delayed and data.startswith(b"DELETE "):
                         Path(path + ".deleting").touch()
                         time.sleep(0.5)
                         delayed = True
-                    bridge.sendall(data)
+                    try:
+                        bridge.sendall(data)
+                    except OSError:
+                        # The daemon closed while this request waited, which slow-bridge
+                        # makes likely. Stop writing but keep draining: a reply it sent
+                        # before hanging up is still in the buffer, and the client needs
+                        # it. The loop ends when the read side reaches EOF.
+                        try:
+                            bridge.shutdown(socket.SHUT_WR)
+                        except OSError:
+                            pass
                     continue
-                data = bridge.recv(65536)
+                try:
+                    data = bridge.recv(65536)
+                except OSError:
+                    return
                 if not data:
                     return
                 sys.stdout.buffer.write(data)
