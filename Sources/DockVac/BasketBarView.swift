@@ -10,6 +10,9 @@ final class BasketBarView: NSView {
   private let detail = Theme.label("", size: 11, color: .secondaryLabelColor)
   private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
   private let reviewButton = NSButton(title: "Review & Remove…", target: nil, action: nil)
+  /// Pull-down rather than a plain button: the safe level is the obvious choice, and the
+  /// thorough one stays one click away instead of hiding in the menu bar.
+  private let automaticButton = NSPopUpButton(frame: .zero, pullsDown: true)
 
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
@@ -20,6 +23,18 @@ final class BasketBarView: NSView {
       "trash.circle", pointSize: 22, weight: .regular, color: .secondaryLabelColor)
     icon.translatesAutoresizingMaskIntoConstraints = false
     icon.setContentHuggingPriority(.required, for: .horizontal)
+
+    automaticButton.bezelStyle = .rounded
+    automaticButton.autoenablesItems = false
+    automaticButton.addItem(withTitle: "Clean Up…")
+    for level in AutomaticCleanupLevel.allCases {
+      let item = NSMenuItem(
+        title: level.menuTitle, action: #selector(automaticPressed(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = level.rawValue
+      item.toolTip = level.explanation
+      automaticButton.menu?.addItem(item)
+    }
 
     clearButton.target = self
     clearButton.action = #selector(clearPressed)
@@ -37,7 +52,7 @@ final class BasketBarView: NSView {
     text.spacing = 1
     text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-    let row = NSStackView(views: [icon, text, clearButton, reviewButton])
+    let row = NSStackView(views: [icon, text, automaticButton, clearButton, reviewButton])
     row.orientation = .horizontal
     row.alignment = .centerY
     row.spacing = 12
@@ -68,13 +83,14 @@ final class BasketBarView: NSView {
   }
 
   func apply(_ state: ReportViewState) {
+    applyAutomaticLevels(state.automaticPlans)
     let plan = state.plan
     if state.basket.isEmpty {
       icon.image = Theme.symbol(
         "trash.circle", pointSize: 22, weight: .regular, color: .secondaryLabelColor)
       summary.stringValue = "Nothing selected for cleanup"
       detail.stringValue =
-        "Tick items in the list, double-click tiles, or use Cleanup › Add Dangling Images and Build Cache."
+        "Tick items in the list, double-click tiles, or use Clean Up to remove everything Docker can make again."
       clearButton.isEnabled = false
       reviewButton.isEnabled = false
       reviewButton.title = "Review & Remove…"
@@ -105,6 +121,31 @@ final class BasketBarView: NSView {
     clearButton.isEnabled = true
     reviewButton.isEnabled = true
     reviewButton.title = plan.isEmpty ? "Review…" : "Review & Remove \(plan.operations.count)…"
+  }
+
+  /// Shows what each level would free, and disables a level that would remove nothing.
+  private func applyAutomaticLevels(_ plans: [AutomaticCleanupLevel: CleanupPlan]) {
+    for item in automaticButton.menu?.items ?? [] {
+      guard let raw = item.representedObject as? String,
+        let level = AutomaticCleanupLevel(rawValue: raw)
+      else { continue }
+      let plan = plans[level] ?? .empty
+      item.title =
+        plan.isEmpty
+        ? "\(level.menuTitle) (nothing to remove)"
+        : "\(level.menuTitle) · \(plan.summary), about \(ByteFormat.string(plan.estimatedReclaimableBytes))"
+      item.isEnabled = !plan.isEmpty
+    }
+    automaticButton.isEnabled = plans.values.contains { !$0.isEmpty }
+    automaticButton.toolTip =
+      "Remove everything Docker can make again. Containers and volumes are never selected."
+  }
+
+  @objc private func automaticPressed(_ sender: NSMenuItem) {
+    guard let raw = sender.representedObject as? String,
+      let level = AutomaticCleanupLevel(rawValue: raw)
+    else { return }
+    actions?.runAutomaticCleanup(level)
   }
 
   @objc private func clearPressed() {

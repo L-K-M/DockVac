@@ -37,6 +37,9 @@ enum Fixtures {
     "sha256:b116e155074440ffd9e449559433feb4cd2341eb3554b1da1c638c976e56451d"
   static let danglingImageID =
     "sha256:74700d03f0d3b3b47827bf65fb00dca5930f545832f6887507f39b7fe206ae27"
+  /// Tagged but never pushed or pulled: no registry could serve it again.
+  static let localOnlyImageID =
+    "sha256:d0356edd3fd5a9c69ea95d9742195d7bd4036dd244379b7b99c2648c02a156eb"
   static let multiTagImageID =
     "sha256:4ab5bac49e07ba97e6cb2d94981daaceac58cedc49f5713021bb87d1a0d15809"
   static let helloWorldImageID =

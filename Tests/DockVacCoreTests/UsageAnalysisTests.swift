@@ -246,7 +246,8 @@ final class UsageAnalysisTests: XCTestCase {
     XCTAssertEqual(item?.statusText, "Pinned by digest, no tag")
     XCTAssertTrue(item?.removability.isRemovableNow == true, "it can still be removed on request")
     XCTAssertFalse(
-      report.safeSuggestionIDs.contains(pinned.resourceID), "but it is never suggested as safe")
+      report.automaticCleanupIDs(.safe).contains(pinned.resourceID),
+      "but it is never suggested as safe")
 
     let truly = DockerImage(
       id: "sha256:d", repoTags: [], repoDigests: [], created: nil, sizeBytes: 1,
@@ -269,7 +270,7 @@ final class UsageAnalysisTests: XCTestCase {
       "shared build cache bytes are not counted twice")
     XCTAssertEqual(report.totalAttributedBytes, 16_427_111 + 2_097_152 + 4_296_704 + 3_097_415)
 
-    let safe = report.safeSuggestionIDs
+    let safe = report.automaticCleanupIDs(.safe)
     XCTAssertEqual(safe.count, 6, "one dangling image plus the five private cache records")
     XCTAssertTrue(safe.contains(Fixtures.imageID(Fixtures.danglingImageID)))
     XCTAssertTrue(safe.contains(Fixtures.cacheID(Fixtures.privateCacheRecordID)))

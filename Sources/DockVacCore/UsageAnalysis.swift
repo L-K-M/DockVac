@@ -223,23 +223,6 @@ public struct UsageReport: Hashable, Sendable {
     }
     return closure
   }
-
-  /// Items that are safe to remove without losing user data: dangling images that no
-  /// container uses, and build cache records that no build is using.
-  public var safeSuggestionIDs: [DockerResourceID] {
-    var ids: [DockerResourceID] = []
-    for image in usage.images where image.isDangling {
-      if let item = item(for: image.resourceID), item.removability.isRemovableNow {
-        ids.append(item.id)
-      }
-    }
-    for record in usage.buildCache {
-      if let item = item(for: record.resourceID), item.removability.isRemovableNow {
-        ids.append(item.id)
-      }
-    }
-    return ids
-  }
 }
 
 /// Derives relationships, reclaimability, and user-facing notes from a usage snapshot.

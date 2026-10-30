@@ -42,6 +42,9 @@ struct ReportViewState {
   let selectedCategory: DockerResourceKind?
   let basket: Set<DockerResourceID>
   let plan: CleanupPlan
+  /// What an automatic cleanup would remove at each level, so the cleanup bar can show
+  /// the count and the estimate before the user commits to one.
+  let automaticPlans: [AutomaticCleanupLevel: CleanupPlan]
   let filter: ReportFilter
   let connection: DockerConnection?
 }
@@ -57,5 +60,6 @@ protocol ReportActions: AnyObject {
   func removeFromBasket(_ ids: [DockerResourceID])
   func clearBasket()
   func reviewAndRemove()
+  func runAutomaticCleanup(_ level: AutomaticCleanupLevel)
   func copyToPasteboard(_ text: String)
 }
