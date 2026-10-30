@@ -40,9 +40,9 @@ and confirm:
 - **Cleans up automatically** on request: **Clean Up** selects everything Docker can make
   again and goes straight to the confirmation sheet. The safe level takes untagged image
   leftovers and unused build cache; the thorough level also takes unused images whose
-  every tag comes from a registry, so `docker pull` fetches them back while you can reach
-  that registry. An image built here, or carrying a tag no registry knows, stays at both
-  levels. Neither level touches a container or a volume, so no container leaves Docker
+  every tag names a repository one of their digests came from, so `docker pull` can fetch
+  them back while that registry is reachable. An image built here, or tagged in a
+  repository no digest covers, stays at both levels. Neither level touches a container or a volume, so no container leaves Docker
   Desktop's list and nothing written inside one is lost.
 - **Confirms** with a sheet that lists each operation in the order it runs, its estimated
   effect, warnings such as "volume contents are deleted permanently", and the equivalent

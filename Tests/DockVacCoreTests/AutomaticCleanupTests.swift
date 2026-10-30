@@ -99,7 +99,8 @@ final class AutomaticCleanupTests: XCTestCase {
 
     XCTAssertEqual(
       report.automaticCleanupIDs(.thorough), [multi.resourceID],
-      "every tag names the same repository the digest does, so a pull restores all of them")
+      "every tag names the repository the digest came from, so the image counts as one a\n"
+        + "registry can serve again")
   }
 
   // MARK: - What no level may ever do

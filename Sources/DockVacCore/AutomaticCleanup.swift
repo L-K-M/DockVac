@@ -41,11 +41,11 @@ public enum AutomaticCleanupLevel: String, CaseIterable, Hashable, Sendable, Ide
         """
     case .thorough:
       return """
-        Also removes images no container uses whose every tag comes from a registry, so \
-        docker pull fetches the same bytes back, as long as you can still reach that \
-        registry and it still serves that digest. Images built locally stay, and so does \
-        an image carrying a tag no registry knows, because a pull would not bring that \
-        tag back.
+        Also removes images no container uses whose every tag names a repository one of \
+        their digests came from, so docker pull fetches the same bytes back while that \
+        registry is reachable. Docker does not record which tag came from which pull, so \
+        a tag you added yourself inside such a repository goes with the image. An image \
+        built here, or tagged in a repository no digest covers, stays.
         """
     }
   }
@@ -61,8 +61,11 @@ public enum AutomaticCleanupLevel: String, CaseIterable, Hashable, Sendable, Ide
         return true
       }
       // A digest records that a registry served exactly these bytes, so a pull can ask for
-      // them again. Removing an image removes every one of its tags with it, though, and a
-      // tag in a repository no digest covers was made here: no pull would bring it back.
+      // them again. Removing an image removes every one of its tags with it, though, and
+      // the Engine reports no tag-to-digest mapping, so the closest available test is
+      // whether a digest covers each tag's repository. A tag whose repository no digest
+      // covers was made here, and no pull would bring it back; one added by hand inside a
+      // covered repository cannot be told from a pulled tag, and goes with the image.
       guard !image.repoDigests.isEmpty else {
         return false
       }
