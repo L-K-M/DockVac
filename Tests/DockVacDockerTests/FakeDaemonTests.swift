@@ -216,7 +216,8 @@ final class FakeDaemonTests: XCTestCase {
     let report = UsageAnalyzer.analyze(usage)
     XCTAssertEqual(report.itemCount, 27)
     XCTAssertEqual(
-      report.automaticCleanupIDs(.safe).count, 6, "one dangling image plus the private cache records")
+      report.automaticCleanupIDs(.safe).count, 6,
+      "one dangling image plus the private cache records")
 
     let plan = CleanupPlan.make(selecting: report.automaticCleanupIDs(.safe), from: report)
     XCTAssertEqual(plan.operations.count, 6)

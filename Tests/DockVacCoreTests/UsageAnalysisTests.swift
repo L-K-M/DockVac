@@ -246,7 +246,8 @@ final class UsageAnalysisTests: XCTestCase {
     XCTAssertEqual(item?.statusText, "Pinned by digest, no tag")
     XCTAssertTrue(item?.removability.isRemovableNow == true, "it can still be removed on request")
     XCTAssertFalse(
-      report.automaticCleanupIDs(.safe).contains(pinned.resourceID), "but it is never suggested as safe")
+      report.automaticCleanupIDs(.safe).contains(pinned.resourceID),
+      "but it is never suggested as safe")
 
     let truly = DockerImage(
       id: "sha256:d", repoTags: [], repoDigests: [], created: nil, sizeBytes: 1,
