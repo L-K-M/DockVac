@@ -37,6 +37,11 @@ and confirm:
   image's layers is counted under that image rather than twice.
 - **Collects** the items you tick into a cleanup list. Adding an image that a stopped
   container still uses also adds that container, and tells you so.
+- **Cleans up automatically** on request: **Clean Up** selects everything Docker can make
+  again and goes straight to the confirmation sheet. The safe level takes untagged image
+  leftovers and unused build cache; the thorough level also takes unused images that carry
+  a registry digest, so `docker pull` fetches them back. Neither level touches a container
+  or a volume, so no container leaves Docker Desktop's list and no data is lost.
 - **Confirms** with a sheet that lists each operation in the order it runs, its estimated
   effect, warnings such as "volume contents are deleted permanently", and the equivalent
   `docker` commands.
@@ -75,10 +80,12 @@ Use `scripts/build.sh --run` to build and launch without installing.
 1. Launch DockVac. It finds the daemon and scans in stages; Cancel stops the scan.
 2. Read the treemap. Double-click a category to zoom in, click a tile for details, and use
    **Show › Reclaimable** to see only what can go right now.
-3. Tick items in the list, double-click tiles, or choose **Cleanup › Add Dangling Images
-   and Build Cache** for the safe wins.
-4. Click **Review & Remove…**, read the list, tick the confirmation box, and remove.
-5. DockVac rescans when the cleanup sheet closes so you see the real result.
+3. For a one-shot cleanup, use **Clean Up** in the cleanup bar (also **Cleanup › Clean Up
+   Rebuildable Space…**, ⇧⌘K) and pick a level. Each entry shows what it would free.
+4. To choose for yourself, tick items in the list, double-click tiles, or use **Cleanup ›
+   Add Dangling Images and Build Cache**.
+5. Click **Review & Remove…**, read the list, tick the confirmation box, and remove.
+6. DockVac rescans when the cleanup sheet closes so you see the real result.
 
 ### Connect to a server
 

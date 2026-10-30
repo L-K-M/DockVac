@@ -115,7 +115,7 @@ final class FakeDaemonTests: XCTestCase {
     let usage = try await DockerScanner(client: client).scan { _ in }
     let report = UsageAnalyzer.analyze(usage)
     XCTAssertEqual(report.itemCount, 27)
-    let plan = CleanupPlan.make(selecting: report.safeSuggestionIDs, from: report)
+    let plan = CleanupPlan.make(selecting: report.automaticCleanupIDs(.safe), from: report)
     let state = await CleanupRunner(client: client).run(plan) { _ in }
     XCTAssertEqual(state.succeededCount, 6, "\(state.statuses)")
     XCTAssertEqual(state.failedCount, 0)
@@ -128,7 +128,7 @@ final class FakeDaemonTests: XCTestCase {
   func testSSHStopFinishesInflightRemovalAndSkipsTheRest() async throws {
     let client = try sshClient(mode: "slow-bridge")
     let report = UsageAnalyzer.analyze(try await client.diskUsage())
-    let plan = CleanupPlan.make(selecting: report.safeSuggestionIDs, from: report)
+    let plan = CleanupPlan.make(selecting: report.automaticCleanupIDs(.safe), from: report)
     let marker = socketPath + ".deleting"
     defer { try? FileManager.default.removeItem(atPath: marker) }
     let task = Task { await CleanupRunner(client: client).run(plan) { _ in } }
@@ -216,9 +216,9 @@ final class FakeDaemonTests: XCTestCase {
     let report = UsageAnalyzer.analyze(usage)
     XCTAssertEqual(report.itemCount, 27)
     XCTAssertEqual(
-      report.safeSuggestionIDs.count, 6, "one dangling image plus the private cache records")
+      report.automaticCleanupIDs(.safe).count, 6, "one dangling image plus the private cache records")
 
-    let plan = CleanupPlan.make(selecting: report.safeSuggestionIDs, from: report)
+    let plan = CleanupPlan.make(selecting: report.automaticCleanupIDs(.safe), from: report)
     XCTAssertEqual(plan.operations.count, 6)
     XCTAssertTrue(plan.exclusions.isEmpty)
     XCTAssertEqual(plan.operations.first?.id.kind, .images, "the dangling image goes first")

@@ -69,6 +69,14 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
     CleanupPlan.make(selecting: basket, from: report)
   }
 
+  /// The plan each automatic cleanup level would run against the current report.
+  var automaticPlans: [AutomaticCleanupLevel: CleanupPlan] {
+    Dictionary(
+      uniqueKeysWithValues: AutomaticCleanupLevel.allCases.map {
+        ($0, CleanupPlan.make(selecting: report.automaticCleanupIDs($0), from: report))
+      })
+  }
+
   private var viewState: ReportViewState {
     ReportViewState(
       report: displayedReport,
@@ -78,6 +86,7 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
       selectedCategory: selectedCategory,
       basket: basket,
       plan: plan,
+      automaticPlans: automaticPlans,
       filter: filter,
       connection: connection
     )
@@ -298,10 +307,20 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   // MARK: - Cleanup
 
   func reviewAndRemove() {
+    confirm(plan)
+  }
+
+  /// Confirms everything Docker can produce again at `level`. The cleanup list is left
+  /// alone: what the user confirms is exactly the reproducible set, never a volume they
+  /// ticked earlier, and their own selection survives if they cancel.
+  func runAutomaticCleanup(_ level: AutomaticCleanupLevel) {
+    confirm(CleanupPlan.make(selecting: report.automaticCleanupIDs(level), from: report))
+  }
+
+  private func confirm(_ plan: CleanupPlan) {
     guard phase == .report, !service.isCleaning, !isSheetPresented,
       let window = windowController.window, let connection
     else { return }
-    let plan = self.plan
     guard !plan.isEmpty || !plan.exclusions.isEmpty else { return }
     let sheet = ConfirmationSheetController(
       plan: plan, connection: connection, equivalentCommands: service.equivalentCommands(for: plan)
@@ -377,7 +396,15 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
   }
 
   @objc func addSafeItems(_ sender: Any?) {
-    addToBasket(report.safeSuggestionIDs)
+    addToBasket(report.automaticCleanupIDs(.safe))
+  }
+
+  @objc func automaticCleanupSafe(_ sender: Any?) {
+    runAutomaticCleanup(.safe)
+  }
+
+  @objc func automaticCleanupThorough(_ sender: Any?) {
+    runAutomaticCleanup(.thorough)
   }
 
   @objc func clearBasketAction(_ sender: Any?) {
@@ -420,7 +447,11 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
         ? "Remove Selected Item from Cleanup" : "Add Selected Item to Cleanup"
       return !item.removability.isBlocked
     case #selector(addSafeItems(_:)):
-      return inReport && !report.safeSuggestionIDs.isEmpty
+      return inReport && !report.automaticCleanupIDs(.safe).isEmpty
+    case #selector(automaticCleanupSafe(_:)):
+      return inReport && !report.automaticCleanupIDs(.safe).isEmpty
+    case #selector(automaticCleanupThorough(_:)):
+      return inReport && !report.automaticCleanupIDs(.thorough).isEmpty
     case #selector(clearBasketAction(_:)):
       return inReport && !basket.isEmpty
     case #selector(reviewAndRemoveAction(_:)):
@@ -461,6 +492,8 @@ final class AppController: NSObject, ReportActions, DockerServiceDelegate, NSMen
         focus.flatMap { displayedReport.category(for: $0)?.items } ?? displayedReport.items
       select(item: items.first?.id)
     case "add-safe": addSafeItems(nil)
+    case "auto-safe": runAutomaticCleanup(.safe)
+    case "auto-thorough": runAutomaticCleanup(.thorough)
     case "filter-reclaimable": setFilter(.reclaimable)
     case "review": reviewAndRemove()
     default: break

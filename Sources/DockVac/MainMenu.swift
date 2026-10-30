@@ -1,4 +1,5 @@
 import AppKit
+import DockVacCore
 
 /// Builds the menu bar. App-specific items target the controller explicitly; standard
 /// editing items travel the responder chain.
@@ -103,6 +104,19 @@ enum MainMenu {
     menu.addItem(
       targeted("Clear Cleanup List", #selector(AppController.clearBasketAction(_:)), "", controller)
     )
+    menu.addItem(.separator())
+    let automatic = targeted(
+      AutomaticCleanupLevel.safe.menuTitle + "…",
+      #selector(AppController.automaticCleanupSafe(_:)), "k", controller)
+    automatic.keyEquivalentModifierMask = [.command, .shift]
+    automatic.toolTip = AutomaticCleanupLevel.safe.explanation
+    menu.addItem(automatic)
+    let thorough = targeted(
+      AutomaticCleanupLevel.thorough.menuTitle + "…",
+      #selector(AppController.automaticCleanupThorough(_:)), "k", controller)
+    thorough.keyEquivalentModifierMask = [.command, .shift, .option]
+    thorough.toolTip = AutomaticCleanupLevel.thorough.explanation
+    menu.addItem(thorough)
     menu.addItem(.separator())
     let review = targeted(
       "Review and Remove…", #selector(AppController.reviewAndRemoveAction(_:)), "\r", controller)
