@@ -52,9 +52,13 @@ def main():
                         bridge.sendall(data)
                     except OSError:
                         # The daemon closed while this request waited, which slow-bridge
-                        # makes likely. Ending here lets the client read what it already
-                        # answered, instead of a traceback it reports as a failed connect.
-                        return
+                        # makes likely. Stop writing but keep draining: a reply it sent
+                        # before hanging up is still in the buffer, and the client needs
+                        # it. The loop ends when the read side reaches EOF.
+                        try:
+                            bridge.shutdown(socket.SHUT_WR)
+                        except OSError:
+                            pass
                     continue
                 try:
                     data = bridge.recv(65536)
